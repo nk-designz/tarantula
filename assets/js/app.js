@@ -30,14 +30,56 @@ let Hooks = {}
 
 Hooks.DiscourseNetwork = {
   mounted() {
+    this.graphData = {nodes: [], links: []}
+    this.redraw = () => this.drawGraph(this.cloneNodes(), this.cloneLinks())
+    this.handleThemeChange = () => this.redraw()
+
     this.handleEvent("render_network", (data) => {
-      this.drawGraph(data.nodes || [], data.links || [])
+      this.graphData = {
+        nodes: data.nodes || [],
+        links: data.links || [],
+      }
+
+      this.redraw()
     })
+
+    this.resizeObserver = new ResizeObserver(() => this.redraw())
+    this.resizeObserver.observe(this.el)
+    window.addEventListener("app:theme-changed", this.handleThemeChange)
+  },
+
+  destroyed() {
+    this.resizeObserver?.disconnect()
+    window.removeEventListener("app:theme-changed", this.handleThemeChange)
+  },
+
+  cloneNodes() {
+    return (this.graphData.nodes || []).map((node) => ({...node}))
+  },
+
+  cloneLinks() {
+    return (this.graphData.links || []).map((link) => ({...link}))
+  },
+
+  palette() {
+    const styles = getComputedStyle(document.documentElement)
+
+    return {
+      actor: styles.getPropertyValue("--graph-actor").trim() || "#0f766e",
+      concept: styles.getPropertyValue("--graph-concept").trim() || "#d0672d",
+      pro: styles.getPropertyValue("--graph-pro").trim() || "#0f766e",
+      contra: styles.getPropertyValue("--graph-contra").trim() || "#b74434",
+      neutral: styles.getPropertyValue("--graph-neutral").trim() || "#607086",
+      label: styles.getPropertyValue("--graph-label").trim() || "#24313f",
+      empty: styles.getPropertyValue("--text-soft").trim() || "#94a3b8",
+      stroke: styles.getPropertyValue("--surface-strong").trim() || "#ffffff",
+    }
   },
 
   drawGraph(nodes, links) {
     const container = d3.select(this.el)
     container.selectAll("*").remove()
+    const palette = this.palette()
 
     const width = this.el.clientWidth || 800
     const height = this.el.clientHeight || 600
@@ -49,7 +91,8 @@ Hooks.DiscourseNetwork = {
 
     if (nodes.length === 0) {
       container.append("div")
-        .attr("class", "flex h-full items-center justify-center text-sm text-slate-400")
+        .attr("class", "flex h-full items-center justify-center px-6 text-center text-sm font-medium")
+        .style("color", palette.empty)
         .text("No converged network yet")
 
       return
@@ -68,9 +111,9 @@ Hooks.DiscourseNetwork = {
       .join("line")
       .attr("stroke-width", d => 1.5 + (d.weight || 1))
       .attr("stroke", d => {
-        if (d.stance === "pro") return "#0f766e"
-        if (d.stance === "contra") return "#b91c1c"
-        return "#64748b"
+        if (d.stance === "pro") return palette.pro
+        if (d.stance === "contra") return palette.contra
+        return palette.neutral
       })
 
     const node = svg.append("g")
@@ -78,8 +121,8 @@ Hooks.DiscourseNetwork = {
       .data(nodes)
       .join("circle")
       .attr("r", d => this.nodeRadius(d))
-      .attr("fill", d => d.group === "actor" ? "#0f766e" : "#ea580c")
-      .attr("stroke", "#fff")
+      .attr("fill", d => d.group === "actor" ? palette.actor : palette.concept)
+      .attr("stroke", palette.stroke)
       .attr("stroke-width", 2)
       .call(this.drag(simulation))
 
@@ -95,7 +138,7 @@ Hooks.DiscourseNetwork = {
       .text(d => d.label || d.id)
       .style("font-size", "12px")
       .style("font-weight", "600")
-      .style("fill", "#1e293b")
+      .style("fill", palette.label)
 
     simulation.on("tick", () => {
       link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
@@ -138,7 +181,13 @@ const liveSocket = new LiveSocket("/live", Socket, {
 })
 
 // Show progress bar on live navigation and form submits
-topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
+const configureTopbar = () => {
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--topbar").trim() || "#d0672d"
+  topbar.config({barColors: {0: accent}, shadowColor: "rgba(0, 0, 0, .22)"})
+}
+
+configureTopbar()
+window.addEventListener("app:theme-changed", configureTopbar)
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 

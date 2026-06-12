@@ -12,25 +12,64 @@
     </script>
     <script>
       (() => {
-        const setTheme = (theme) => {
-          if (theme === "system") {
-            localStorage.removeItem("phx:theme");
-            document.documentElement.removeAttribute("data-theme");
-          } else {
-            localStorage.setItem("phx:theme", theme);
-            document.documentElement.setAttribute("data-theme", theme);
+        const storageKey = "phx:theme";
+        const media = window.matchMedia("(prefers-color-scheme: dark)");
+
+        const resolveTheme = (choice) => {
+          if (choice === "system") {
+            return media.matches ? "midnight" : "paper";
           }
+
+          return choice;
         };
-        if (!document.documentElement.hasAttribute("data-theme")) {
-          setTheme(localStorage.getItem("phx:theme") || "system");
+
+        const broadcast = (choice, resolved) => {
+          window.dispatchEvent(new CustomEvent("app:theme-changed", {
+            detail: {choice, theme: resolved}
+          }));
+        };
+
+        const applyTheme = (choice) => {
+          const resolved = resolveTheme(choice);
+          document.documentElement.setAttribute("data-theme", resolved);
+          document.documentElement.setAttribute("data-theme-choice", choice);
+          broadcast(choice, resolved);
+        };
+
+        const persistChoice = (choice) => {
+          if (choice === "system") {
+            localStorage.removeItem(storageKey);
+          } else {
+            localStorage.setItem(storageKey, choice);
+          }
+
+          applyTheme(choice);
+        };
+
+        applyTheme(localStorage.getItem(storageKey) || "system");
+
+        if (media.addEventListener) {
+          media.addEventListener("change", () => {
+            if ((localStorage.getItem(storageKey) || "system") === "system") {
+              applyTheme("system");
+            }
+          });
         }
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
-        
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
+
+        window.addEventListener("storage", (e) => {
+          if (e.key === storageKey) {
+            applyTheme(e.newValue || "system");
+          }
+        });
+
+        window.addEventListener("phx:set-theme", (e) => {
+          const theme = e.target.closest("[data-phx-theme]")?.dataset.phxTheme;
+          if (theme) persistChoice(theme);
+        });
       })();
     </script>
   </head>
-  <body>
+  <body class="antialiased">
     {@inner_content}
   </body>
 </html>

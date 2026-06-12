@@ -35,8 +35,63 @@ defmodule DiscourseAppWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <div class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,146,60,0.16),_transparent_28%),linear-gradient(180deg,_#fffaf2_0%,_#fffdf9_45%,_#f8fafc_100%)] text-slate-900">
-      <main class="px-4 py-6 sm:px-6 lg:px-8">
+    <div class="relative min-h-screen overflow-hidden text-[color:var(--text-main)]">
+      <div class="pointer-events-none absolute inset-0 overflow-hidden">
+        <div
+          class="absolute -left-16 top-0 h-72 w-72 rounded-full blur-3xl"
+          style="background: var(--accent-soft);"
+        >
+        </div>
+        <div
+          class="absolute right-0 top-24 h-80 w-80 rounded-full blur-3xl"
+          style="background: var(--accent-2-soft);"
+        >
+        </div>
+        <div
+          class="absolute bottom-[-6rem] left-1/3 h-64 w-64 rounded-full blur-3xl"
+          style="background: var(--accent-soft);"
+        >
+        </div>
+      </div>
+
+      <header class="sticky top-0 z-40 px-4 py-4 sm:px-6 lg:px-8">
+        <div class="surface-panel mx-auto flex max-w-[1600px] flex-col gap-4 rounded-[1.8rem] px-5 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+          <div class="flex items-center gap-4">
+            <div
+              class="flex h-12 w-12 items-center justify-center rounded-[1.2rem] text-white shadow-lg"
+              style="background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);"
+            >
+              <.icon name="hero-share" class="size-6" />
+            </div>
+            <div class="space-y-1">
+              <div class="dna-kicker">
+                <span class="h-2.5 w-2.5 rounded-full" style="background: var(--accent);"></span>
+                Discourse Network Platform
+              </div>
+              <div>
+                <div class="text-xl font-semibold tracking-[-0.03em] text-[color:var(--text-main)]">
+                  Project intelligence cockpit
+                </div>
+                <p class="text-sm text-[color:var(--text-muted)]">
+                  Upload documents, converge actors and concepts, and inspect stance evidence in one place.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div
+              class="hidden rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] lg:inline-flex"
+              style="background: var(--surface-muted); color: var(--text-muted); border: 1px solid var(--line);"
+            >
+              Phoenix LiveView + SQLite
+            </div>
+            <.theme_toggle />
+          </div>
+        </div>
+      </header>
+
+      <main class="relative px-4 pb-10 sm:px-6 lg:px-8">
         <div class="mx-auto max-w-[1600px] space-y-4">
           {render_slot(@inner_block)}
         </div>
@@ -59,7 +114,7 @@ defmodule DiscourseAppWeb.Layouts do
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id} aria-live="polite">
+    <div id={@id} aria-live="polite" class="dna-flash-stack">
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:error} flash={@flash} />
 
@@ -97,31 +152,53 @@ defmodule DiscourseAppWeb.Layouts do
   """
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 transition-[left]" />
-
+    <div class="theme-toggle" role="group" aria-label="Theme selection">
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        type="button"
+        class="theme-option"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="system"
+        data-theme-option="system"
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <span class="theme-swatch theme-swatch-system"></span>
+        <.icon name="hero-computer-desktop" class="size-4" />
+        <span class="hidden sm:inline">System</span>
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        type="button"
+        class="theme-option"
         phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="light"
+        data-phx-theme="paper"
+        data-theme-option="paper"
       >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <span class="theme-swatch theme-swatch-paper"></span>
+        <.icon name="hero-sun" class="size-4" />
+        <span class="hidden sm:inline">Paper</span>
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        type="button"
+        class="theme-option"
         phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="dark"
+        data-phx-theme="reef"
+        data-theme-option="reef"
       >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <span class="theme-swatch theme-swatch-reef"></span>
+        <.icon name="hero-sparkles" class="size-4" />
+        <span class="hidden sm:inline">Reef</span>
+      </button>
+
+      <button
+        type="button"
+        class="theme-option"
+        phx-click={JS.dispatch("phx:set-theme")}
+        data-phx-theme="midnight"
+        data-theme-option="midnight"
+      >
+        <span class="theme-swatch theme-swatch-midnight"></span>
+        <.icon name="hero-moon" class="size-4" />
+        <span class="hidden sm:inline">Midnight</span>
       </button>
     </div>
     """
