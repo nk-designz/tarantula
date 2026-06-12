@@ -37,12 +37,18 @@ defmodule DiscourseApp.Analyzer do
 
   def analyze_text(text) when is_binary(text) do
     with {:ok, json_content} <- call_ollama(text),
-         {:ok, decoded} <- Jason.decode(json_content) do
-      {:ok,
-       decoded
-       |> normalize_statements()
-       |> Enum.map(&prepare_statement/1)
-       |> Enum.reject(&is_nil/1)}
+         {:ok, decoded} <- decode_json_payload(json_content) do
+      statements =
+        decoded
+        |> normalize_statements()
+        |> Enum.map(&prepare_statement/1)
+        |> Enum.reject(&is_nil/1)
+
+      if statements == [] do
+        {:error, "Keine verwertbaren Aussagen aus LLM-Antwort extrahiert."}
+      else
+        {:ok, statements}
+      end
     else
       {:error, reason} -> {:error, reason}
       other -> {:error, inspect(other)}
@@ -88,17 +94,98 @@ defmodule DiscourseApp.Analyzer do
     end
   end
 
+  defp decode_json_payload(content) when is_binary(content) do
+    trimmed = String.trim(content)
+
+    case Jason.decode(trimmed) do
+      {:ok, decoded} -> {:ok, decoded}
+      _ -> decode_json_fallback(trimmed)
+    end
+  end
+
+  defp decode_json_fallback(content) do
+    candidates = [extract_fenced_json(content), extract_json_fragment(content)]
+
+    candidates
+    |> Enum.reject(&is_nil/1)
+    |> Enum.find_value(fn candidate ->
+      case Jason.decode(candidate) do
+        {:ok, decoded} -> {:ok, decoded}
+        _ -> nil
+      end
+    end)
+    |> case do
+      nil -> {:error, "LLM-Antwort war kein gueltiges JSON."}
+      result -> result
+    end
+  end
+
+  defp extract_fenced_json(content) do
+    case Regex.run(~r/```(?:json)?\s*(\{[\s\S]*\}|\[[\s\S]*\])\s*```/i, content) do
+      [_, json] -> String.trim(json)
+      _ -> nil
+    end
+  end
+
+  defp extract_json_fragment(content) do
+    object = Regex.run(~r/(\{[\s\S]*\})/, content)
+    array = Regex.run(~r/(\[[\s\S]*\])/, content)
+
+    candidate =
+      [object, array]
+      |> Enum.map(fn
+        [_, match] -> match
+        _ -> nil
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.max_by(&String.length/1, fn -> nil end)
+
+    if candidate, do: String.trim(candidate), else: nil
+  end
+
   defp normalize_statements(list) when is_list(list), do: list
   defp normalize_statements(%{"actors" => list}) when is_list(list), do: list
   defp normalize_statements(%{"statements" => list}) when is_list(list), do: list
-  defp normalize_statements(map) when is_map(map), do: [map]
+  defp normalize_statements(%{"results" => list}) when is_list(list), do: list
+  defp normalize_statements(%{"items" => list}) when is_list(list), do: list
+  defp normalize_statements(%{"data" => data}), do: normalize_statements(data)
+  defp normalize_statements(%{"output" => data}), do: normalize_statements(data)
+
+  defp normalize_statements(map) when is_map(map) do
+    cond do
+      statement_map?(map) ->
+        [map]
+
+      true ->
+        map
+        |> Map.values()
+        |> Enum.find([], fn
+          value when is_list(value) -> value
+          _ -> []
+        end)
+    end
+  end
+
   defp normalize_statements(_other), do: []
 
   defp prepare_statement(statement) when is_map(statement) do
-    actor = statement |> get_value("actor") |> normalize_label()
-    concept = statement |> get_value("concept") |> normalize_label()
-    stance = statement |> get_value("stance") |> normalize_stance()
-    evidence = statement |> get_value("evidence") |> clean_excerpt()
+    actor =
+      statement |> get_first_value(["actor", "name", "entity", "subject"]) |> normalize_label()
+
+    concept =
+      statement
+      |> get_first_value(["concept", "topic", "issue", "claim", "theme"])
+      |> normalize_label()
+
+    stance =
+      statement
+      |> get_first_value(["stance", "position", "sentiment", "polarity"])
+      |> normalize_stance()
+
+    evidence =
+      statement
+      |> get_first_value(["evidence", "excerpt", "quote", "rationale", "reason"])
+      |> clean_excerpt()
 
     if actor == "" or concept == "" or is_nil(stance) do
       nil
@@ -114,8 +201,23 @@ defmodule DiscourseApp.Analyzer do
 
   defp prepare_statement(_other), do: nil
 
-  defp get_value(map, key) when is_map(map) do
-    Map.get(map, key) || Map.get(map, String.to_atom(key))
+  defp statement_map?(map) when is_map(map) do
+    get_first_value(map, ["actor", "name", "entity", "subject"]) != nil and
+      get_first_value(map, ["concept", "topic", "issue", "claim", "theme"]) != nil
+  end
+
+  defp get_first_value(map, keys) when is_map(map) do
+    Enum.find_value(keys, fn key -> get_value(map, key) end)
+  end
+
+  defp get_value(map, key) when is_map(map) and is_binary(key) do
+    expected = String.downcase(key)
+
+    Enum.find_value(map, fn
+      {k, v} when is_binary(k) -> if String.downcase(k) == expected, do: v
+      {k, v} when is_atom(k) -> if String.downcase(Atom.to_string(k)) == expected, do: v
+      _ -> nil
+    end)
   end
 
   defp normalize_label(nil), do: ""
@@ -138,8 +240,10 @@ defmodule DiscourseApp.Analyzer do
       "con" -> "contra"
       "oppose" -> "contra"
       "opposes" -> "contra"
+      "against" -> "contra"
       "neutral" -> "neutral"
       "mixed" -> "neutral"
+      "unknown" -> "neutral"
       _ -> nil
     end
   end
