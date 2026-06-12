@@ -5,6 +5,8 @@ defmodule DiscourseAppWeb.Layouts do
   """
   use DiscourseAppWeb, :html
 
+  alias DiscourseApp.Projects
+
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
   # skeleton of your application, namely HTML headers
@@ -31,81 +33,189 @@ defmodule DiscourseAppWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
+  attr :current_project, :map, default: nil, doc: "the project currently in view"
+
+  attr :nav_section, :atom,
+    default: :dashboard,
+    values: [:dashboard, :projects, :project, :documents, :actors, :concepts, :graph, :analyzer],
+    doc: "the active navbar section"
+
   slot :inner_block, required: true
 
   def app(assigns) do
+    assigns = assign(assigns, :nav_projects, Projects.list_projects())
+
     ~H"""
-    <div class="relative min-h-screen overflow-hidden text-[color:var(--text-main)]">
-      <div class="pointer-events-none absolute inset-0 overflow-hidden">
+    <div class="app-shell">
+      <%!-- Ambient background blobs --%>
+      <div class="pointer-events-none fixed inset-0 z-0 overflow-hidden">
         <div
-          class="absolute -left-16 top-0 h-72 w-72 rounded-full blur-3xl"
-          style="background: var(--accent-soft);"
+          class="ambient-blob"
+          style="top: -6rem; left: -6rem; width: 28rem; height: 28rem; background: var(--accent-soft);"
         >
         </div>
         <div
-          class="absolute right-0 top-24 h-80 w-80 rounded-full blur-3xl"
-          style="background: var(--accent-2-soft);"
+          class="ambient-blob"
+          style="top: 12rem; right: -4rem; width: 24rem; height: 24rem; background: var(--accent-2-soft);"
         >
         </div>
         <div
-          class="absolute bottom-[-6rem] left-1/3 h-64 w-64 rounded-full blur-3xl"
-          style="background: var(--accent-soft);"
+          class="ambient-blob"
+          style="bottom: -8rem; left: 40%; width: 22rem; height: 22rem; background: var(--accent-soft);"
         >
         </div>
       </div>
 
-      <div class="relative z-10 mx-auto flex w-full max-w-[1700px] flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-start lg:gap-6 lg:px-8 lg:py-6">
-        <aside class="surface-panel w-full rounded-[1.8rem] p-4 lg:sticky lg:top-6 lg:w-[320px] lg:shrink-0 lg:p-5">
-          <div class="flex items-center gap-4">
-            <div
-              class="flex h-12 w-12 items-center justify-center rounded-[1.2rem] text-white shadow-lg"
-              style="background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);"
-            >
-              <.icon name="hero-share" class="size-6" />
+      <%!-- Sidebar: overlay on mobile, inline on desktop --%>
+      <aside id="site-sidebar" class="sidebar">
+        <%!-- Logo / brand --%>
+        <div class="sidebar-header">
+          <div class="flex items-center gap-3">
+            <div class="sidebar-logo">
+              <.icon name="hero-share" class="size-5" />
             </div>
-            <div>
-              <div class="dna-kicker">
-                <span class="h-2.5 w-2.5 rounded-full" style="background: var(--accent);"></span>
-                Discourse Network
-              </div>
-              <div class="mt-2 text-lg font-semibold tracking-[-0.02em]">
-                Project intelligence cockpit
-              </div>
+            <div class="min-w-0">
+              <div class="sidebar-brand-name">Discourse</div>
+              <div class="sidebar-brand-sub">Intelligence cockpit</div>
             </div>
           </div>
+          <button
+            type="button"
+            class="sidebar-close-btn lg:hidden"
+            phx-click={hide_sidebar()}
+            aria-label="Close navigation"
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+          </button>
+        </div>
 
-          <p class="mt-4 text-sm text-[color:var(--text-muted)]">
-            Upload documents, converge actors and concepts, and inspect stance evidence in one place.
-          </p>
-
-          <nav class="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-1" aria-label="Primary">
-            <.link navigate={~p"/"} class="dna-button dna-button-secondary w-full justify-start">
+        <%!-- Primary nav --%>
+        <nav class="sidebar-nav" aria-label="Main navigation">
+          <div class="sidebar-nav-section">
+            <span class="sidebar-nav-label">Navigation</span>
+            <.link
+              navigate={~p"/"}
+              class={nav_item_class(@nav_section == :dashboard)}
+              phx-click={hide_sidebar()}
+            >
               <.icon name="hero-home" class="size-4" /> Dashboard
             </.link>
             <.link
               navigate={~p"/projects"}
-              class="dna-button dna-button-secondary w-full justify-start"
+              class={nav_item_class(@nav_section == :projects)}
+              phx-click={hide_sidebar()}
             >
               <.icon name="hero-folder" class="size-4" /> Projects
             </.link>
-          </nav>
-
-          <div
-            class="mt-5 rounded-2xl border px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--text-muted)]"
-            style="background: var(--surface-muted); border-color: var(--line);"
-          >
-            Phoenix LiveView + SQLite
           </div>
 
-          <div class="mt-4">
-            <.theme_toggle />
-          </div>
-        </aside>
+          <%= if @current_project do %>
+            <div class="sidebar-nav-section">
+              <span class="sidebar-nav-label">{@current_project.name}</span>
+              <.link
+                navigate={~p"/projects/#{@current_project.id}"}
+                class={nav_item_class(@nav_section == :project)}
+                phx-click={hide_sidebar()}
+              >
+                <.icon name="hero-information-circle" class="size-4" /> Overview
+              </.link>
+              <.link
+                navigate={~p"/projects/#{@current_project.id}/documents"}
+                class={nav_item_class(@nav_section == :documents)}
+                phx-click={hide_sidebar()}
+              >
+                <.icon name="hero-document-text" class="size-4" /> Documents
+              </.link>
+              <.link
+                navigate={~p"/projects/#{@current_project.id}/actors"}
+                class={nav_item_class(@nav_section == :actors)}
+                phx-click={hide_sidebar()}
+              >
+                <.icon name="hero-user-group" class="size-4" /> Actors
+              </.link>
+              <.link
+                navigate={~p"/projects/#{@current_project.id}/concepts"}
+                class={nav_item_class(@nav_section == :concepts)}
+                phx-click={hide_sidebar()}
+              >
+                <.icon name="hero-light-bulb" class="size-4" /> Concepts
+              </.link>
+              <.link
+                navigate={~p"/projects/#{@current_project.id}/graph"}
+                class={nav_item_class(@nav_section == :graph)}
+                phx-click={hide_sidebar()}
+              >
+                <.icon name="hero-share" class="size-4" /> DNA Graph
+              </.link>
+            </div>
+          <% end %>
+        </nav>
 
-        <main class="relative min-w-0 flex-1 pb-10">
-          <div class="space-y-4">
-            {render_slot(@inner_block)}
+        <%!-- Project switcher --%>
+        <%= if @nav_projects != [] do %>
+          <div class="sidebar-switcher">
+            <details class="group">
+              <summary class="sidebar-switcher-trigger">
+                <.icon name="hero-arrows-right-left" class="size-3.5 shrink-0" />
+                <span class="min-w-0 truncate">
+                  {if @current_project, do: @current_project.name, else: "Switch project"}
+                </span>
+                <.icon
+                  name="hero-chevron-down"
+                  class="size-3.5 shrink-0 ml-auto transition-transform group-open:rotate-180"
+                />
+              </summary>
+              <div class="sidebar-switcher-menu">
+                <%= for project <- @nav_projects do %>
+                  <.link
+                    navigate={project_nav_path(project.id, @nav_section)}
+                    phx-click={hide_sidebar()}
+                    class={[
+                      "sidebar-switcher-item",
+                      @current_project && @current_project.id == project.id &&
+                        "sidebar-switcher-item-active"
+                    ]}
+                  >
+                    {project.name}
+                  </.link>
+                <% end %>
+              </div>
+            </details>
           </div>
+        <% end %>
+
+        <%!-- Bottom: theme + version --%>
+        <div class="sidebar-footer">
+          <.theme_toggle />
+          <p class="sidebar-version">Phoenix LiveView · SQLite</p>
+        </div>
+      </aside>
+
+      <%!-- Mobile overlay backdrop --%>
+      <button
+        id="sidebar-overlay"
+        type="button"
+        class="fixed inset-0 z-40 hidden bg-black/30 backdrop-blur-sm lg:hidden"
+        phx-click={hide_sidebar()}
+        aria-label="Close menu"
+      >
+      </button>
+
+      <%!-- Mobile hamburger --%>
+      <button
+        id="sidebar-open-button"
+        type="button"
+        class="hamburger-btn lg:hidden"
+        phx-click={show_sidebar()}
+        aria-label="Open navigation"
+      >
+        <.icon name="hero-bars-3" class="size-5" />
+      </button>
+
+      <%!-- Page content --%>
+      <div class="app-content">
+        <main class="app-main">
+          {render_slot(@inner_block)}
         </main>
       </div>
 
@@ -113,6 +223,36 @@ defmodule DiscourseAppWeb.Layouts do
     </div>
     """
   end
+
+  defp nav_item_class(true),
+    do: "nav-item nav-item-active"
+
+  defp nav_item_class(false),
+    do: "nav-item"
+
+  defp show_sidebar(js \\ %JS{}) do
+    js
+    |> JS.remove_class("-translate-x-full", to: "#site-sidebar")
+    |> JS.add_class("translate-x-0", to: "#site-sidebar")
+    |> JS.show(to: "#sidebar-overlay", display: "block")
+  end
+
+  defp hide_sidebar(js \\ %JS{}) do
+    js
+    |> JS.remove_class("translate-x-0", to: "#site-sidebar")
+    |> JS.add_class("-translate-x-full", to: "#site-sidebar")
+    |> JS.hide(to: "#sidebar-overlay")
+  end
+
+  defp project_nav_path(project_id, :documents), do: ~p"/projects/#{project_id}/documents"
+  defp project_nav_path(project_id, :actors), do: ~p"/projects/#{project_id}/actors"
+  defp project_nav_path(project_id, :concepts), do: ~p"/projects/#{project_id}/concepts"
+  defp project_nav_path(project_id, :graph), do: ~p"/projects/#{project_id}/graph"
+  defp project_nav_path(project_id, :project), do: ~p"/projects/#{project_id}"
+  defp project_nav_path(project_id, :analyzer), do: ~p"/projects/#{project_id}/documents"
+  defp project_nav_path(_project_id, :dashboard), do: ~p"/"
+  defp project_nav_path(_project_id, :projects), do: ~p"/projects"
+  defp project_nav_path(project_id, _section), do: ~p"/projects/#{project_id}"
 
   @doc """
   Shows the flash group with standard titles and content.

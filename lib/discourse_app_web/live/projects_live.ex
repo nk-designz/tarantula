@@ -120,7 +120,12 @@ defmodule DiscourseAppWeb.ProjectsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={%{}}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={%{}}
+      current_project={@selected_project}
+      nav_section={if @selected_project, do: :project, else: :projects}
+    >
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-4xl font-semibold tracking-[-0.03em]">Projects</h1>

@@ -31,7 +31,12 @@ defmodule DiscourseAppWeb.AnalyzerLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={%{}}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={%{}}
+      current_project={@selected_project}
+      nav_section={:analyzer}
+    >
       <section class="rounded-[2rem] border border-white/70 bg-white/80 p-6 shadow-[0_24px_80px_rgba(148,163,184,0.18)] backdrop-blur xl:p-8">
         <div class="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div class="max-w-3xl space-y-4">

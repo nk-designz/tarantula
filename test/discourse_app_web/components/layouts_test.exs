@@ -1,9 +1,14 @@
 defmodule DiscourseAppWeb.LayoutsTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import Phoenix.LiveViewTest
 
   alias DiscourseAppWeb.Layouts
+
+  setup do
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(DiscourseApp.Repo)
+    :ok
+  end
 
   test "theme_toggle renders all theme options" do
     html = render_component(&Layouts.theme_toggle/1, %{})
@@ -23,7 +28,7 @@ defmodule DiscourseAppWeb.LayoutsTest do
         inner_block: [%{inner_block: fn _, _ -> "inner-content" end}]
       )
 
-    assert html =~ "Project intelligence cockpit"
+    assert html =~ "Intelligence cockpit"
     assert html =~ "inner-content"
     assert html =~ "id=\"flash-group\""
   end

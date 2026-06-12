@@ -27,7 +27,12 @@ defmodule DiscourseAppWeb.ConceptsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={%{}}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={%{}}
+      current_project={@project}
+      nav_section={:concepts}
+    >
       <%= if @project do %>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>

@@ -46,7 +46,7 @@ defmodule DiscourseAppWeb.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={%{}}>
+    <Layouts.app flash={@flash} current_scope={%{}} nav_section={:dashboard}>
       <section class="surface-panel-strong rounded-[1.9rem] p-6 md:p-8">
         <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div class="space-y-4">
