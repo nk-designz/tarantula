@@ -48,7 +48,7 @@ defmodule DiscourseApp.Analyzer do
   end
 
   def analyze_text(text, settings) when is_binary(text) do
-    with {:ok, json_content} <- call_llm(text, settings),
+    with {:ok, json_content} <- call_llm(@system_prompt, text, settings),
          {:ok, decoded} <- decode_json_payload(json_content) do
       statements =
         decoded
@@ -85,16 +85,16 @@ defmodule DiscourseApp.Analyzer do
 
   # ── Provider routing ────────────────────────────────────────────────────────
 
-  defp call_llm(text, %{provider: "ollama"} = settings), do: call_ollama(text, settings)
-  defp call_llm(text, %{provider: "claude"} = settings), do: call_claude(text, settings)
-  defp call_llm(text, %{provider: "openai"} = settings), do: call_openai(text, settings)
+  defp call_llm(system_prompt, text, %{provider: "ollama"} = settings), do: call_ollama(system_prompt, text, settings)
+  defp call_llm(system_prompt, text, %{provider: "claude"} = settings), do: call_claude(system_prompt, text, settings)
+  defp call_llm(system_prompt, text, %{provider: "openai"} = settings), do: call_openai(system_prompt, text, settings)
 
-  defp call_llm(_text, %{provider: p}),
+  defp call_llm(_system_prompt, _text, %{provider: p}),
     do: {:error, "Unknown LLM provider: #{p}. Check Settings."}
 
   # ── Ollama ────────────────────────────────────────────────────────────────────
 
-  defp call_ollama(text, settings) do
+  defp call_ollama(system_prompt, text, settings) do
     base_url = String.trim_trailing(settings.ollama_url || "http://localhost:11434", "/")
     url = base_url <> "/api/chat"
 
@@ -108,7 +108,7 @@ defmodule DiscourseApp.Analyzer do
       format: "json",
       stream: false,
       messages: [
-        %{role: "system", content: @system_prompt},
+        %{role: "system", content: system_prompt},
         %{role: "user", content: text}
       ]
     }
@@ -130,7 +130,7 @@ defmodule DiscourseApp.Analyzer do
 
   # ── Claude (Anthropic) ────────────────────────────────────────────────────────
 
-  defp call_claude(text, settings) do
+  defp call_claude(system_prompt, text, settings) do
     key = settings.claude_api_key || ""
 
     if key == "" do
@@ -144,7 +144,7 @@ defmodule DiscourseApp.Analyzer do
       payload = %{
         model: model,
         max_tokens: 4096,
-        system: @system_prompt,
+        system: system_prompt,
         messages: [%{role: "user", content: text}]
       }
 
@@ -180,7 +180,7 @@ defmodule DiscourseApp.Analyzer do
 
   # ── OpenAI ────────────────────────────────────────────────────────────────────
 
-  defp call_openai(text, settings) do
+  defp call_openai(system_prompt, text, settings) do
     key = settings.openai_api_key || ""
 
     if key == "" do
@@ -195,7 +195,7 @@ defmodule DiscourseApp.Analyzer do
         model: model,
         response_format: %{type: "json_object"},
         messages: [
-          %{role: "system", content: @system_prompt},
+          %{role: "system", content: system_prompt},
           %{role: "user", content: text}
         ]
       }
@@ -431,6 +431,155 @@ defmodule DiscourseApp.Analyzer do
     |> case do
       "" -> nil
       excerpt -> String.slice(excerpt, 0, 280)
+    end
+  end
+
+  # ── Chunked document analysis ─────────────────────────────────────────────────
+  # Splits long texts into overlapping word-windows so no single LLM call
+  # exceeds safe context lengths. Results are merged and deduplicated.
+
+  @chunk_words 2_000
+  @overlap_words 200
+  @min_chunk_words 50
+
+  def analyze_text_chunked(text) when is_binary(text) do
+    settings = Settings.get_llm_settings()
+    analyze_text_chunked(text, settings)
+  end
+
+  def analyze_text_chunked(text, settings) when is_binary(text) do
+    case chunk_text(text) do
+      [_single] ->
+        analyze_text(text, settings)
+
+      chunks ->
+        all_statements =
+          Enum.reduce(chunks, [], fn chunk, acc ->
+            case analyze_text(chunk, settings) do
+              {:ok, statements} -> acc ++ statements
+              {:error, _} -> acc
+            end
+          end)
+
+        if all_statements == [] do
+          {:error, "Keine verwertbaren Aussagen aus keinem Textabschnitt extrahiert."}
+        else
+          {:ok, deduplicate_statements(all_statements)}
+        end
+    end
+  end
+
+  defp chunk_text(text) do
+    words = String.split(text, ~r/\s+/, trim: true)
+    total = length(words)
+
+    if total <= @chunk_words do
+      [text]
+    else
+      build_chunks(words, 0, total, [])
+    end
+  end
+
+  defp build_chunks(_words, start, total, acc) when start >= total, do: Enum.reverse(acc)
+
+  defp build_chunks(words, start, total, acc) do
+    chunk_end = min(start + @chunk_words, total)
+    slice = Enum.slice(words, start, chunk_end - start)
+
+    if length(slice) < @min_chunk_words do
+      Enum.reverse(acc)
+    else
+      next_start = start + @chunk_words - @overlap_words
+      build_chunks(words, next_start, total, [Enum.join(slice, " ") | acc])
+    end
+  end
+
+  # Deduplicates on (actor, concept, stance) — keeps the entry with evidence when both halves of
+  # an overlap window produce the same statement.
+  defp deduplicate_statements(statements) do
+    statements
+    |> Enum.group_by(fn s ->
+      actor = s["actor"] |> to_string() |> String.downcase() |> String.trim()
+      concept = s["concept"] |> to_string() |> String.downcase() |> String.trim()
+      {actor, concept, to_string(s["stance"])}
+    end)
+    |> Enum.map(fn {_key, [first | _] = group} ->
+      Enum.max_by(group, fn s -> if s["evidence"] && s["evidence"] != "", do: 1, else: 0 end,
+        fn -> first end)
+    end)
+  end
+
+  # ── Actor disambiguation (second LLM pass) ────────────────────────────────────
+  # Sends the full list of extracted actor names to the LLM asking it to map
+  # variants ("J. Varwick", "Prof. Varwick") to a single canonical form.
+
+  @disambiguate_actors_prompt """
+  You are a data normalization assistant for Discourse Network Analysis.
+  You receive a JSON array of actor names extracted from political discourse documents.
+  Names may refer to the same person or organization under different spellings, abbreviations, or academic titles.
+
+  TASK: Return a flat JSON object mapping each input name to its canonical form.
+  - Group names that refer to the same entity under one canonical label.
+  - The canonical label MUST be one of the exact input strings (choose the most complete and correct spelling).
+  - If a name has no near-duplicate, map it to itself.
+  - Every input name must appear as a key in the output object.
+  - Return ONLY the JSON object. No markdown. No explanation.
+
+  EXAMPLE:
+  Input: ["J. Varwick", "Johannes Varwick", "Prof. Varwick", "SPD", "Sozialdemokratische Partei Deutschlands"]
+  Output: {"J. Varwick": "Johannes Varwick", "Johannes Varwick": "Johannes Varwick", "Prof. Varwick": "Johannes Varwick", "SPD": "SPD", "Sozialdemokratische Partei Deutschlands": "SPD"}
+  """
+
+  def disambiguate_actors(actor_names, settings) when is_list(actor_names) do
+    unique = actor_names |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    case unique do
+      [] -> {:ok, %{}}
+      [single] -> {:ok, %{single => single}}
+      _ -> do_disambiguate(@disambiguate_actors_prompt, unique, settings)
+    end
+  end
+
+  # ── Concept deduplication (second LLM pass) ───────────────────────────────────
+  # Semantically similar concepts (e.g. "Waffenlieferungen" / "Waffenexporte")
+  # are clustered by the LLM into one canonical label.
+
+  @deduplicate_concepts_prompt """
+  You are a data normalization assistant for Discourse Network Analysis.
+  You receive a JSON array of concept/topic names from political discourse analysis.
+  Concepts that are semantically equivalent or near-synonymous should be merged
+  (e.g. "Waffenlieferungen an die Ukraine" and "Waffenexporte Ukraine" refer to the same policy debate).
+
+  TASK: Return a flat JSON object mapping each input concept to its canonical form.
+  - Group semantically equivalent or highly similar concepts under one canonical label.
+  - The canonical label MUST be one of the exact input strings (choose the clearest and most descriptive one).
+  - If a concept has no near-duplicate, map it to itself.
+  - Every input concept must appear as a key in the output object.
+  - Return ONLY the JSON object. No markdown. No explanation.
+  """
+
+  def deduplicate_concepts(concept_names, settings) when is_list(concept_names) do
+    unique = concept_names |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    case unique do
+      [] -> {:ok, %{}}
+      [single] -> {:ok, %{single => single}}
+      _ -> do_disambiguate(@deduplicate_concepts_prompt, unique, settings)
+    end
+  end
+
+  defp do_disambiguate(system_prompt, names, settings) do
+    input_json = Jason.encode!(names)
+
+    with {:ok, raw} <- call_llm(system_prompt, input_json, settings),
+         {:ok, decoded} <- decode_json_payload(raw) do
+      case decoded do
+        map when is_map(map) ->
+          {:ok, Map.new(map, fn {k, v} -> {to_string(k), to_string(v)} end)}
+
+        _ ->
+          {:error, "Disambiguation returned unexpected JSON shape."}
+      end
     end
   end
 

@@ -208,7 +208,8 @@ defmodule DiscourseApp.Projects do
     started_ms = System.monotonic_time(:millisecond)
     project = get_project!(project_id)
     documents = project.documents
-    total_steps = max(length(documents) * 3 + 1, 1)
+    # 3 steps per document + 1 initial + 2 post-analysis passes (actor disambiguation, concept dedup)
+    total_steps = max(length(documents) * 3 + 3, 1)
 
     reset_project_analysis!(project_id)
     update_progress!(project_id, 1, total_steps, started_ms, "Extracting documents")
@@ -217,11 +218,19 @@ defmodule DiscourseApp.Projects do
       documents
       |> Enum.with_index(1)
       |> Enum.reduce([], fn {document, index}, acc ->
-        case analyze_document_with_retry(project_id, document, index, total_steps, started_ms, max_retries, retry_delay_ms) do
+        case analyze_document_with_retry(project_id, document, index, total_steps, started_ms, max_retries, retry_delay_ms, settings) do
           :ok -> acc
           {:error, message} -> [message | acc]
         end
       end)
+
+    doc_count = length(documents)
+
+    update_progress!(project_id, doc_count * 3 + 1, total_steps, started_ms, "Disambiguating actors")
+    disambiguate_project_actors(project_id, settings)
+
+    update_progress!(project_id, doc_count * 3 + 2, total_steps, started_ms, "Deduplicating concepts")
+    deduplicate_project_concepts(project_id, settings)
 
     normalize_and_converge_project_network(project_id)
 
@@ -262,7 +271,9 @@ defmodule DiscourseApp.Projects do
     started_ms = System.monotonic_time(:millisecond)
     document = Repo.get!(Document, document_id)
 
-    analyze_document_with_retry(project_id, document, 1, 1, started_ms, max_retries, retry_delay_ms)
+    analyze_document_with_retry(project_id, document, 1, 1, started_ms, max_retries, retry_delay_ms, settings)
+    disambiguate_project_actors(project_id, settings)
+    deduplicate_project_concepts(project_id, settings)
     normalize_and_converge_project_network(project_id)
     broadcast_project(project_id)
     broadcast_projects()
@@ -276,22 +287,23 @@ defmodule DiscourseApp.Projects do
          started_ms,
          max_retries,
          retry_delay_ms,
+         settings,
          attempt \\ 1
        ) do
-    case analyze_document(project_id, document, index, total_steps, started_ms) do
+    case analyze_document(project_id, document, index, total_steps, started_ms, settings) do
       :ok ->
         :ok
 
       {:error, _reason} when attempt < max_retries ->
         Process.sleep(retry_delay_ms * attempt)
-        analyze_document_with_retry(project_id, document, index, total_steps, started_ms, max_retries, retry_delay_ms, attempt + 1)
+        analyze_document_with_retry(project_id, document, index, total_steps, started_ms, max_retries, retry_delay_ms, settings, attempt + 1)
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
-  defp analyze_document(project_id, document, index, total_steps, started_ms) do
+  defp analyze_document(project_id, document, index, total_steps, started_ms, settings) do
     update_document!(document.id, %{status: "extracting", last_error: nil})
 
     update_progress!(
@@ -304,7 +316,7 @@ defmodule DiscourseApp.Projects do
 
     with {:ok, text} <- TextExtractor.extract(document),
          :ok <- ensure_text_present(text),
-         {:ok, statements} <- Analyzer.analyze_text(text) do
+         {:ok, statements} <- Analyzer.analyze_text_chunked(text, settings) do
       update_document!(document.id, %{
         status: "analyzed",
         extracted_text: text,
@@ -369,6 +381,60 @@ defmodule DiscourseApp.Projects do
       })
       |> Repo.insert!()
     end)
+  end
+
+  defp disambiguate_project_actors(project_id, settings) do
+    actor_names =
+      Stance
+      |> where([s], s.project_id == ^project_id)
+      |> select([s], s.actor_name)
+      |> distinct(true)
+      |> Repo.all()
+      |> Enum.reject(&is_nil/1)
+
+    case Analyzer.disambiguate_actors(actor_names, settings) do
+      {:ok, mapping} ->
+        Enum.each(actor_names, fn name ->
+          canonical = Map.get(mapping, name, name)
+
+          if canonical != name do
+            from(s in Stance,
+              where: s.project_id == ^project_id and s.actor_name == ^name
+            )
+            |> Repo.update_all(set: [actor_name: canonical])
+          end
+        end)
+
+      {:error, _reason} ->
+        :ok
+    end
+  end
+
+  defp deduplicate_project_concepts(project_id, settings) do
+    concept_names =
+      Stance
+      |> where([s], s.project_id == ^project_id)
+      |> select([s], s.concept_name)
+      |> distinct(true)
+      |> Repo.all()
+      |> Enum.reject(&is_nil/1)
+
+    case Analyzer.deduplicate_concepts(concept_names, settings) do
+      {:ok, mapping} ->
+        Enum.each(concept_names, fn name ->
+          canonical = Map.get(mapping, name, name)
+
+          if canonical != name do
+            from(s in Stance,
+              where: s.project_id == ^project_id and s.concept_name == ^name
+            )
+            |> Repo.update_all(set: [concept_name: canonical])
+          end
+        end)
+
+      {:error, _reason} ->
+        :ok
+    end
   end
 
   defp normalize_and_converge_project_network(project_id) do
