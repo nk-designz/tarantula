@@ -1,6 +1,13 @@
 defmodule DiscourseApp.Analyzer do
   alias DiscourseApp.Settings
 
+  @url_to_md_prompt """
+  You are a document converter. Convert the following HTML or web page text into clean, well-structured Markdown.
+  Preserve headings, paragraphs, lists, and meaningful content.
+  Remove navigation menus, cookie banners, ads, footers, and other boilerplate.
+  Return ONLY the Markdown content with no additional explanations or code fences.
+  """
+
   @system_prompt """
   You are a precise data extraction algorithm for Discourse Network Analysis (DNA).
   Analyze the text provided by the user and extract all actors, their concepts/topics, their stance,
@@ -31,6 +38,15 @@ defmodule DiscourseApp.Analyzer do
     }
   ]
   """
+
+  def html_to_markdown(html_content) when is_binary(html_content) do
+    settings = Settings.get_llm_settings()
+
+    case call_llm(@url_to_md_prompt, html_content, settings) do
+      {:ok, markdown} -> {:ok, String.trim(markdown)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   def analyze_markdown(markdown) do
     markdown

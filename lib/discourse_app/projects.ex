@@ -96,6 +96,48 @@ defmodule DiscourseApp.Projects do
     |> broadcast_after_write()
   end
 
+  def add_url_document(%Project{} = project, url) when is_binary(url) do
+    with {:ok, %{body: body}} <- Req.get(url, receive_timeout: 30_000),
+         html_content = if(is_binary(body), do: body, else: to_string(body)),
+         {:ok, markdown} <- Analyzer.html_to_markdown(html_content) do
+      destination_dir = upload_dir(project.id)
+      File.mkdir_p!(destination_dir)
+
+      uri = URI.parse(url)
+      page_name = (uri.host || "page") <> (uri.path || "")
+      safe_name = sanitize_filename(Path.basename(page_name, "/") <> ".md")
+      uuid = Ecto.UUID.generate()
+
+      relative_path =
+        Path.join([
+          "uploads",
+          "projects",
+          Integer.to_string(project.id),
+          "documents",
+          "#{uuid}-#{safe_name}"
+        ])
+
+      absolute_path = Path.join([File.cwd!(), "priv/static", relative_path])
+      File.write!(absolute_path, markdown)
+
+      attrs = %{
+        project_id: project.id,
+        name: uri.host || "page",
+        original_filename: safe_name,
+        content_type: "text/markdown",
+        storage_path: relative_path,
+        source_type: "url",
+        status: "uploaded",
+        metadata: %{"url" => url, "size_bytes" => byte_size(markdown)}
+      }
+
+      %Document{}
+      |> Document.changeset(attrs)
+      |> Repo.insert()
+      |> broadcast_after_write()
+    end
+  end
+
   def delete_document(%Document{} = document) do
     document
     |> Repo.delete()

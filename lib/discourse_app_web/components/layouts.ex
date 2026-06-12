@@ -42,6 +42,7 @@ defmodule DiscourseAppWeb.Layouts do
       :projects,
       :project,
       :documents,
+      :ingest_url,
       :actors,
       :concepts,
       :graph,
@@ -135,6 +136,13 @@ defmodule DiscourseAppWeb.Layouts do
                 phx-click={hide_sidebar()}
               >
                 <.icon name="hero-document-text" class="size-4" /> Documents
+              </.link>
+              <.link
+                navigate={~p"/projects/#{@current_project.id}/ingest-url"}
+                class={nav_item_class(@nav_section == :ingest_url)}
+                phx-click={hide_sidebar()}
+              >
+                <.icon name="hero-link" class="size-4" /> Ingest URL
               </.link>
               <.link
                 navigate={~p"/projects/#{@current_project.id}/actors"}
@@ -266,6 +274,7 @@ defmodule DiscourseAppWeb.Layouts do
   end
 
   defp project_nav_path(project_id, :documents), do: ~p"/projects/#{project_id}/documents"
+  defp project_nav_path(project_id, :ingest_url), do: ~p"/projects/#{project_id}/ingest-url"
   defp project_nav_path(project_id, :actors), do: ~p"/projects/#{project_id}/actors"
   defp project_nav_path(project_id, :concepts), do: ~p"/projects/#{project_id}/concepts"
   defp project_nav_path(project_id, :graph), do: ~p"/projects/#{project_id}/graph"
