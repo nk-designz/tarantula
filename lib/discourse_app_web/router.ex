@@ -17,7 +17,12 @@ defmodule DiscourseAppWeb.Router do
   scope "/", DiscourseAppWeb do
     pipe_through :browser
 
-    live "/", AnalyzerLive
+    live "/", DashboardLive
+    live "/projects", ProjectsLive, :index
+    live "/projects/:id", ProjectsLive, :show
+    live "/projects/:id/documents", DocumentsLive
+    live "/projects/:id/graph", DnaGraphLive
+    get "/projects/:id/graph/export", GraphExportController, :show
   end
 
   # Other scopes may use custom stacks.

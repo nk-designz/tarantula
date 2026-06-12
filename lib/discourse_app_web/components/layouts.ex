@@ -80,6 +80,11 @@ defmodule DiscourseAppWeb.Layouts do
           </div>
 
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <nav class="flex flex-wrap items-center gap-2">
+              <.link navigate={~p"/"} class="dna-button dna-button-secondary">Dashboard</.link>
+              <.link navigate={~p"/projects"} class="dna-button dna-button-secondary">Projects</.link>
+            </nav>
+
             <div
               class="hidden rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] lg:inline-flex"
               style="background: var(--surface-muted); color: var(--text-muted); border: 1px solid var(--line);"

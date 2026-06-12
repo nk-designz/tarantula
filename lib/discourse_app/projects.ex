@@ -40,6 +40,26 @@ defmodule DiscourseApp.Projects do
     |> broadcast_after_write()
   end
 
+  def update_project(%Project{} = project, attrs) do
+    project
+    |> Project.changeset(attrs)
+    |> Repo.update()
+    |> broadcast_after_write()
+  end
+
+  def delete_project(%Project{} = project) do
+    project
+    |> Repo.delete()
+    |> case do
+      {:ok, deleted} ->
+        broadcast_projects()
+        {:ok, deleted}
+
+      other ->
+        other
+    end
+  end
+
   def add_uploaded_document(%Project{} = project, upload) do
     destination_dir = upload_dir(project.id)
     File.mkdir_p!(destination_dir)
@@ -74,6 +94,27 @@ defmodule DiscourseApp.Projects do
     |> Document.changeset(attrs)
     |> Repo.insert()
     |> broadcast_after_write()
+  end
+
+  def delete_document(%Document{} = document) do
+    document
+    |> Repo.delete()
+    |> case do
+      {:ok, deleted} ->
+        normalize_and_converge_project_network(deleted.project_id)
+        broadcast_project(deleted.project_id)
+        broadcast_projects()
+        {:ok, deleted}
+
+      other ->
+        other
+    end
+  end
+
+  def delete_document(document_id) do
+    Document
+    |> Repo.get!(document_id)
+    |> delete_document()
   end
 
   def enqueue_analysis(%Project{} = project) do
