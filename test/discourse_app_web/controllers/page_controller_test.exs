@@ -7,5 +7,10 @@ defmodule DiscourseAppWeb.PageControllerTest do
 
     assert response =~ "Discourse Network Platform"
     assert response =~ "Create project"
+    assert response =~ "Theme selection"
+    assert response =~ "data-phx-theme=\"system\""
+    assert response =~ "data-phx-theme=\"paper\""
+    assert response =~ "data-phx-theme=\"reef\""
+    assert response =~ "data-phx-theme=\"midnight\""
   end
 end

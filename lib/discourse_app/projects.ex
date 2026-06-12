@@ -28,8 +28,8 @@ defmodule DiscourseApp.Projects do
   end
 
   def get_project!(project_id) do
-    project_id
-    |> Repo.get!(Project)
+    Project
+    |> Repo.get!(project_id)
     |> preload_project()
   end
 
@@ -184,8 +184,8 @@ defmodule DiscourseApp.Projects do
         }
       end
 
-    project_id
-    |> Repo.get!(Project)
+    Project
+    |> Repo.get!(project_id)
     |> Project.analysis_changeset(final_attrs)
     |> Repo.update!()
 
@@ -305,8 +305,8 @@ defmodule DiscourseApp.Projects do
 
       snapshot = build_network_snapshot(project_id)
 
-      project_id
-      |> Repo.get!(Project)
+      Project
+      |> Repo.get!(project_id)
       |> Project.analysis_changeset(%{network_snapshot: snapshot})
       |> Repo.update!()
     end)
@@ -414,8 +414,8 @@ defmodule DiscourseApp.Projects do
     progress = (completed_steps / total_steps * 100) |> round() |> min(99)
     eta_seconds = estimate_eta_seconds(progress, started_ms)
 
-    project_id
-    |> Repo.get!(Project)
+    Project
+    |> Repo.get!(project_id)
     |> Project.analysis_changeset(%{
       status: "processing",
       current_step: step_name,
@@ -445,8 +445,8 @@ defmodule DiscourseApp.Projects do
     from(document in Document, where: document.project_id == ^project_id)
     |> Repo.update_all(set: [status: "uploaded", last_error: nil, extracted_text: nil])
 
-    project_id
-    |> Repo.get!(Project)
+    Project
+    |> Repo.get!(project_id)
     |> Project.analysis_changeset(%{network_snapshot: %{"nodes" => [], "links" => []}})
     |> Repo.update!()
 
@@ -454,8 +454,8 @@ defmodule DiscourseApp.Projects do
   end
 
   defp update_document!(document_id, attrs) do
-    document_id
-    |> Repo.get!(Document)
+    Document
+    |> Repo.get!(document_id)
     |> Document.changeset(attrs)
     |> Repo.update!()
   end
