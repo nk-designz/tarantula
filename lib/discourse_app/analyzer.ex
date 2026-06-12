@@ -1,5 +1,5 @@
 defmodule DiscourseApp.Analyzer do
-  @ollama_url "http://localhost:11434/api/chat"
+  alias DiscourseApp.Settings
 
   @system_prompt """
   You are a precise data extraction algorithm for Discourse Network Analysis (DNA).
@@ -36,7 +36,12 @@ defmodule DiscourseApp.Analyzer do
   end
 
   def analyze_text(text) when is_binary(text) do
-    with {:ok, json_content} <- call_ollama(text),
+    settings = Settings.get_llm_settings()
+    analyze_text(text, settings)
+  end
+
+  def analyze_text(text, settings) when is_binary(text) do
+    with {:ok, json_content} <- call_llm(text, settings),
          {:ok, decoded} <- decode_json_payload(json_content) do
       statements =
         decoded
@@ -67,9 +72,28 @@ defmodule DiscourseApp.Analyzer do
   defp extract_strings(text) when is_binary(text), do: text
   defp extract_strings(_value), do: ""
 
-  defp call_ollama(text) do
+  # ── Provider routing ────────────────────────────────────────────────────────
+
+  defp call_llm(text, %{provider: "ollama"} = settings), do: call_ollama(text, settings)
+  defp call_llm(text, %{provider: "claude"} = settings), do: call_claude(text, settings)
+  defp call_llm(text, %{provider: "openai"} = settings), do: call_openai(text, settings)
+
+  defp call_llm(_text, %{provider: p}),
+    do: {:error, "Unknown LLM provider: #{p}. Check Settings."}
+
+  # ── Ollama ────────────────────────────────────────────────────────────────────
+
+  defp call_ollama(text, settings) do
+    base_url = String.trim_trailing(settings.ollama_url || "http://localhost:11434", "/")
+    url = base_url <> "/api/chat"
+
+    model =
+      if settings.ollama_model && settings.ollama_model != "",
+        do: settings.ollama_model,
+        else: "llama3"
+
     payload = %{
-      model: "deepseek-coder-v2:latest",
+      model: model,
       format: "json",
       stream: false,
       messages: [
@@ -78,19 +102,119 @@ defmodule DiscourseApp.Analyzer do
       ]
     }
 
-    case Req.post(@ollama_url, json: payload, receive_timeout: 1_000_000) do
+    case Req.post(url, json: payload, receive_timeout: 1_000_000) do
       {:ok, %{status: 200, body: %{"message" => %{"content" => content}}}} ->
         {:ok, content}
 
       {:ok, %{status: 404}} ->
-        {:error,
-         "Modell 'deepseek-coder-v2:latest' nicht in Ollama gefunden. Bitte 'ollama pull deepseek-coder-v2' ausfuehren."}
+        {:error, "Model '#{model}' not found in Ollama. Run: ollama pull #{model}"}
 
       {:ok, response} ->
-        {:error, "Unerwarteter API-Status von Ollama: #{response.status}"}
+        {:error, "Unexpected Ollama status: #{response.status}"}
 
       {:error, reason} ->
         {:error, "Verbindungsfehler zu Ollama: #{inspect(reason)}"}
+    end
+  end
+
+  # ── Claude (Anthropic) ────────────────────────────────────────────────────────
+
+  defp call_claude(text, settings) do
+    key = settings.claude_api_key || ""
+
+    if key == "" do
+      {:error, "No Claude API key configured. Add it in Settings."}
+    else
+      model =
+        if settings.claude_model && settings.claude_model != "",
+          do: settings.claude_model,
+          else: "claude-opus-4-5"
+
+      payload = %{
+        model: model,
+        max_tokens: 4096,
+        system: @system_prompt,
+        messages: [%{role: "user", content: text}]
+      }
+
+      headers = [
+        {"x-api-key", key},
+        {"anthropic-version", "2023-06-01"},
+        {"content-type", "application/json"}
+      ]
+
+      case Req.post("https://api.anthropic.com/v1/messages",
+             json: payload,
+             headers: headers,
+             receive_timeout: 120_000
+           ) do
+        {:ok, %{status: 200, body: %{"content" => [%{"text" => text_resp} | _]}}} ->
+          {:ok, text_resp}
+
+        {:ok, %{status: 401}} ->
+          {:error, "Claude API key is invalid or expired."}
+
+        {:ok, %{status: 429}} ->
+          {:error, "Claude rate limit exceeded. Try again later."}
+
+        {:ok, %{status: status, body: body}} ->
+          msg = (is_map(body) && body["error"]["message"]) || "status #{status}"
+          {:error, "Claude error: #{msg}"}
+
+        {:error, reason} ->
+          {:error, "Claude connection error: #{inspect(reason)}"}
+      end
+    end
+  end
+
+  # ── OpenAI ────────────────────────────────────────────────────────────────────
+
+  defp call_openai(text, settings) do
+    key = settings.openai_api_key || ""
+
+    if key == "" do
+      {:error, "No OpenAI API key configured. Add it in Settings."}
+    else
+      model =
+        if settings.openai_model && settings.openai_model != "",
+          do: settings.openai_model,
+          else: "gpt-4o"
+
+      payload = %{
+        model: model,
+        response_format: %{type: "json_object"},
+        messages: [
+          %{role: "system", content: @system_prompt},
+          %{role: "user", content: text}
+        ]
+      }
+
+      headers = [
+        {"authorization", "Bearer #{key}"},
+        {"content-type", "application/json"}
+      ]
+
+      case Req.post("https://api.openai.com/v1/chat/completions",
+             json: payload,
+             headers: headers,
+             receive_timeout: 120_000
+           ) do
+        {:ok, %{status: 200, body: %{"choices" => [%{"message" => %{"content" => content}} | _]}}} ->
+          {:ok, content}
+
+        {:ok, %{status: 401}} ->
+          {:error, "OpenAI API key is invalid or expired."}
+
+        {:ok, %{status: 429}} ->
+          {:error, "OpenAI rate limit exceeded. Try again later."}
+
+        {:ok, %{status: status, body: body}} ->
+          msg = (is_map(body) && get_in(body, ["error", "message"])) || "status #{status}"
+          {:error, "OpenAI error: #{msg}"}
+
+        {:error, reason} ->
+          {:error, "OpenAI connection error: #{inspect(reason)}"}
+      end
     end
   end
 

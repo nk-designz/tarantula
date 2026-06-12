@@ -545,6 +545,31 @@ summary:focus-visible {
 }
 
 /* ═══════════════════════════════════════════════════
+   Settings page
+   ═══════════════════════════════════════════════════ */
+
+.settings-card {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1.25rem 1.5rem;
+}
+
+.settings-section-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: -0.01em;
+}
+
+.settings-section-desc {
+  font-size: 0.83rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════════════════
    App shell & sidebar layout
    ═══════════════════════════════════════════════════ */
 

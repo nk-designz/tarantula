@@ -25,6 +25,7 @@ defmodule DiscourseAppWeb.Router do
     live "/projects/:id/documents", DocumentsLive
     live "/projects/:id/graph", DnaGraphLive
     get "/projects/:id/graph/export", GraphExportController, :show
+    live "/settings", SettingsLive
   end
 
   # Other scopes may use custom stacks.

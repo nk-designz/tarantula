@@ -37,7 +37,17 @@ defmodule DiscourseAppWeb.Layouts do
 
   attr :nav_section, :atom,
     default: :dashboard,
-    values: [:dashboard, :projects, :project, :documents, :actors, :concepts, :graph, :analyzer],
+    values: [
+      :dashboard,
+      :projects,
+      :project,
+      :documents,
+      :actors,
+      :concepts,
+      :graph,
+      :analyzer,
+      :settings
+    ],
     doc: "the active navbar section"
 
   slot :inner_block, required: true
@@ -183,6 +193,17 @@ defmodule DiscourseAppWeb.Layouts do
             </details>
           </div>
         <% end %>
+
+        <%!-- Settings link --%>
+        <div style="padding: 0.5rem 0; border-top: 1px solid var(--line); margin-top: 0.25rem;">
+          <.link
+            navigate={~p"/settings"}
+            class={nav_item_class(@nav_section == :settings)}
+            phx-click={hide_sidebar()}
+          >
+            <.icon name="hero-cog-6-tooth" class="size-4" /> Settings
+          </.link>
+        </div>
 
         <%!-- Bottom: theme + version --%>
         <div class="sidebar-footer">
