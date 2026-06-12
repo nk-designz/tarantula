@@ -1,4 +1,4 @@
-defmodule DiscourseAppWeb.DnaGraphLive do
+defmodule DiscourseAppWeb.ActorsLive do
   use DiscourseAppWeb, :live_view
 
   alias DiscourseApp.Projects
@@ -14,27 +14,14 @@ defmodule DiscourseAppWeb.DnaGraphLive do
 
     if connected?(socket) do
       Projects.subscribe_project(project.id)
-      send(self(), :push_graph)
     end
 
     {:noreply, assign(socket, :project, project)}
   end
 
   @impl true
-  def handle_info(:push_graph, socket) do
-    {:noreply, maybe_push_graph(socket)}
-  end
-
-  @impl true
   def handle_info({:project_updated, _project_id}, socket) do
-    socket = assign(socket, :project, Projects.get_project!(socket.assigns.project.id))
-    {:noreply, maybe_push_graph(socket)}
-  end
-
-  defp maybe_push_graph(%{assigns: %{project: nil}} = socket), do: socket
-
-  defp maybe_push_graph(socket) do
-    push_event(socket, "render_network", Projects.network_snapshot(socket.assigns.project))
+    {:noreply, assign(socket, :project, Projects.get_project!(socket.assigns.project.id))}
   end
 
   @impl true
@@ -44,7 +31,7 @@ defmodule DiscourseAppWeb.DnaGraphLive do
       <%= if @project do %>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 class="text-4xl font-semibold tracking-[-0.03em]">DNA Graph</h1>
+            <h1 class="text-4xl font-semibold tracking-[-0.03em]">Actors</h1>
             <p class="mt-1 text-sm text-[color:var(--text-muted)]">
               Project:
               <span class="font-semibold text-[color:var(--text-main)]">{@project.name}</span>
@@ -54,12 +41,6 @@ defmodule DiscourseAppWeb.DnaGraphLive do
           <div class="flex flex-wrap gap-2">
             <.link navigate={~p"/projects/#{@project.id}"} class="dna-button dna-button-secondary">
               Project
-            </.link>
-            <.link
-              navigate={~p"/projects/#{@project.id}/actors"}
-              class="dna-button dna-button-secondary"
-            >
-              Actors
             </.link>
             <.link
               navigate={~p"/projects/#{@project.id}/concepts"}
@@ -73,54 +54,57 @@ defmodule DiscourseAppWeb.DnaGraphLive do
             >
               Documents
             </.link>
-            <a href={~p"/projects/#{@project.id}/graph/export"} class="dna-button dna-button-primary">
-              Export JSON
-            </a>
+            <.link
+              navigate={~p"/projects/#{@project.id}/graph"}
+              class="dna-button dna-button-secondary"
+            >
+              DNA Graph
+            </.link>
           </div>
         </div>
 
         <section class="surface-panel mt-6 rounded-3xl p-6">
-          <h2 class="text-2xl font-semibold">Graph view</h2>
+          <h2 class="text-2xl font-semibold">Actor registry</h2>
           <p class="mt-1 text-sm text-[color:var(--text-muted)]">
-            Converged actor-concept edges with stance polarity and weighting.
+            Converged actors and their occurrence footprint across project documents.
           </p>
 
-          <div
-            id="network-container"
-            phx-hook="DiscourseNetwork"
-            phx-update="ignore"
-            class="ambient-grid mt-4 h-[560px] rounded-[1.5rem]"
-          >
-          </div>
-        </section>
-
-        <section class="surface-panel mt-6 rounded-3xl p-6">
-          <h2 class="text-2xl font-semibold">Latest references</h2>
-
           <div class="mt-4 space-y-3">
-            <%= if @project.stances == [] do %>
+            <%= if @project.actors == [] do %>
               <div
                 class="rounded-2xl border border-dashed px-4 py-8 text-sm text-[color:var(--text-muted)]"
                 style="border-color: var(--line);"
               >
-                No stance evidence yet.
+                No actors extracted yet. Run analysis from the Documents page.
               </div>
             <% end %>
 
-            <%= for stance <- Enum.take(@project.stances, 15) do %>
+            <%= for actor <- @project.actors do %>
               <article
                 class="rounded-2xl border px-4 py-4"
                 style="border-color: var(--line); background: var(--surface-strong);"
               >
-                <div class="flex flex-wrap items-center gap-2 text-sm">
-                  <span class="font-semibold">{stance.actor_name}</span>
-                  <span class="dna-badge">{stance.stance}</span>
-                  <span>on</span>
-                  <span class="font-medium">{stance.concept_name}</span>
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 class="text-lg font-semibold">{actor.name}</h3>
+                    <p class="text-sm text-[color:var(--text-muted)]">slug: {actor.slug}</p>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-2 text-right text-sm">
+                    <div>
+                      <div class="text-xs uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+                        Occurrences
+                      </div>
+                      <div class="text-lg font-semibold">{actor.occurrences_count}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+                        Documents
+                      </div>
+                      <div class="text-lg font-semibold">{actor.document_count}</div>
+                    </div>
+                  </div>
                 </div>
-                <p :if={stance.excerpt} class="mt-3 text-sm leading-7 text-[color:var(--text-muted)]">
-                  {stance.excerpt}
-                </p>
               </article>
             <% end %>
           </div>

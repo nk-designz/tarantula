@@ -54,8 +54,8 @@ defmodule DiscourseAppWeb.Layouts do
         </div>
       </div>
 
-      <header class="sticky top-0 z-40 px-4 py-4 sm:px-6 lg:px-8">
-        <div class="surface-panel mx-auto flex max-w-[1600px] flex-col gap-4 rounded-[1.8rem] px-5 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+      <div class="relative z-10 mx-auto flex w-full max-w-[1700px] flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-start lg:gap-6 lg:px-8 lg:py-6">
+        <aside class="surface-panel w-full rounded-[1.8rem] p-4 lg:sticky lg:top-6 lg:w-[320px] lg:shrink-0 lg:p-5">
           <div class="flex items-center gap-4">
             <div
               class="flex h-12 w-12 items-center justify-center rounded-[1.2rem] text-white shadow-lg"
@@ -63,44 +63,51 @@ defmodule DiscourseAppWeb.Layouts do
             >
               <.icon name="hero-share" class="size-6" />
             </div>
-            <div class="space-y-1">
+            <div>
               <div class="dna-kicker">
                 <span class="h-2.5 w-2.5 rounded-full" style="background: var(--accent);"></span>
-                Discourse Network Platform
+                Discourse Network
               </div>
-              <div>
-                <div class="text-xl font-semibold tracking-[-0.03em] text-[color:var(--text-main)]">
-                  Project intelligence cockpit
-                </div>
-                <p class="text-sm text-[color:var(--text-muted)]">
-                  Upload documents, converge actors and concepts, and inspect stance evidence in one place.
-                </p>
+              <div class="mt-2 text-lg font-semibold tracking-[-0.02em]">
+                Project intelligence cockpit
               </div>
             </div>
           </div>
 
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <nav class="flex flex-wrap items-center gap-2">
-              <.link navigate={~p"/"} class="dna-button dna-button-secondary">Dashboard</.link>
-              <.link navigate={~p"/projects"} class="dna-button dna-button-secondary">Projects</.link>
-            </nav>
+          <p class="mt-4 text-sm text-[color:var(--text-muted)]">
+            Upload documents, converge actors and concepts, and inspect stance evidence in one place.
+          </p>
 
-            <div
-              class="hidden rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] lg:inline-flex"
-              style="background: var(--surface-muted); color: var(--text-muted); border: 1px solid var(--line);"
+          <nav class="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-1" aria-label="Primary">
+            <.link navigate={~p"/"} class="dna-button dna-button-secondary w-full justify-start">
+              <.icon name="hero-home" class="size-4" /> Dashboard
+            </.link>
+            <.link
+              navigate={~p"/projects"}
+              class="dna-button dna-button-secondary w-full justify-start"
             >
-              Phoenix LiveView + SQLite
-            </div>
+              <.icon name="hero-folder" class="size-4" /> Projects
+            </.link>
+          </nav>
+
+          <div
+            class="mt-5 rounded-2xl border px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--text-muted)]"
+            style="background: var(--surface-muted); border-color: var(--line);"
+          >
+            Phoenix LiveView + SQLite
+          </div>
+
+          <div class="mt-4">
             <.theme_toggle />
           </div>
-        </div>
-      </header>
+        </aside>
 
-      <main class="relative px-4 pb-10 sm:px-6 lg:px-8">
-        <div class="mx-auto max-w-[1600px] space-y-4">
-          {render_slot(@inner_block)}
-        </div>
-      </main>
+        <main class="relative min-w-0 flex-1 pb-10">
+          <div class="space-y-4">
+            {render_slot(@inner_block)}
+          </div>
+        </main>
+      </div>
 
       <.flash_group flash={@flash} />
     </div>

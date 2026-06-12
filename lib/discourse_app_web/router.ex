@@ -20,6 +20,8 @@ defmodule DiscourseAppWeb.Router do
     live "/", DashboardLive
     live "/projects", ProjectsLive, :index
     live "/projects/:id", ProjectsLive, :show
+    live "/projects/:id/actors", ActorsLive
+    live "/projects/:id/concepts", ConceptsLive
     live "/projects/:id/documents", DocumentsLive
     live "/projects/:id/graph", DnaGraphLive
     get "/projects/:id/graph/export", GraphExportController, :show

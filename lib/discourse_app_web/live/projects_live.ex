@@ -58,7 +58,7 @@ defmodule DiscourseAppWeb.ProjectsLive do
   @impl true
   def handle_event(
         "update_project",
-      %{"project" => _params},
+        %{"project" => _params},
         %{assigns: %{selected_project: nil}} = socket
       ) do
     {:noreply, put_flash(socket, :error, "Select a project first")}
@@ -205,6 +205,18 @@ defmodule DiscourseAppWeb.ProjectsLive do
                     class="dna-button dna-button-secondary"
                   >
                     Documents
+                  </.link>
+                  <.link
+                    navigate={~p"/projects/#{project.id}/actors"}
+                    class="dna-button dna-button-secondary"
+                  >
+                    Actors
+                  </.link>
+                  <.link
+                    navigate={~p"/projects/#{project.id}/concepts"}
+                    class="dna-button dna-button-secondary"
+                  >
+                    Concepts
                   </.link>
                   <.link
                     navigate={~p"/projects/#{project.id}/graph"}

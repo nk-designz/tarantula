@@ -55,6 +55,11 @@ defmodule DiscourseAppWeb.DocumentsLive do
   end
 
   @impl true
+  def handle_event("validate_upload", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("delete_document", %{"id" => id}, socket) do
     case Projects.delete_document(id) do
       {:ok, _} -> {:noreply, socket |> refresh_project() |> put_flash(:info, "Document deleted")}
@@ -110,6 +115,18 @@ defmodule DiscourseAppWeb.DocumentsLive do
               Project
             </.link>
             <.link
+              navigate={~p"/projects/#{@project.id}/actors"}
+              class="dna-button dna-button-secondary"
+            >
+              Actors
+            </.link>
+            <.link
+              navigate={~p"/projects/#{@project.id}/concepts"}
+              class="dna-button dna-button-secondary"
+            >
+              Concepts
+            </.link>
+            <.link
               navigate={~p"/projects/#{@project.id}/graph"}
               class="dna-button dna-button-secondary"
             >
@@ -156,6 +173,7 @@ defmodule DiscourseAppWeb.DocumentsLive do
           <.form
             for={%{}}
             id="document-upload-form"
+            phx-change="validate_upload"
             phx-submit="save_documents"
             class="mt-6 space-y-4"
           >
@@ -191,6 +209,10 @@ defmodule DiscourseAppWeb.DocumentsLive do
                   </div>
                 <% end %>
               </div>
+            <% end %>
+
+            <%= for error <- upload_errors(@uploads.documents) do %>
+              <p class="text-sm text-[color:var(--danger)]">{upload_error_to_string(error)}</p>
             <% end %>
 
             <button type="submit" class="dna-button dna-button-secondary">
@@ -258,4 +280,9 @@ defmodule DiscourseAppWeb.DocumentsLive do
     </Layouts.app>
     """
   end
+
+  defp upload_error_to_string(:too_large), do: "File is too large"
+  defp upload_error_to_string(:not_accepted), do: "Unsupported file type"
+  defp upload_error_to_string(:too_many_files), do: "Too many files selected"
+  defp upload_error_to_string(other), do: inspect(other)
 end

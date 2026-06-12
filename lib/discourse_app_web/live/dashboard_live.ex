@@ -179,6 +179,18 @@ defmodule DiscourseAppWeb.DashboardLive do
                     Documents
                   </.link>
                   <.link
+                    navigate={~p"/projects/#{project.id}/actors"}
+                    class="dna-button dna-button-secondary"
+                  >
+                    Actors
+                  </.link>
+                  <.link
+                    navigate={~p"/projects/#{project.id}/concepts"}
+                    class="dna-button dna-button-secondary"
+                  >
+                    Concepts
+                  </.link>
+                  <.link
                     navigate={~p"/projects/#{project.id}/graph"}
                     class="dna-button dna-button-secondary"
                   >
