@@ -10,6 +10,15 @@ import Config
 config :discourse_app,
   generators: [timestamp_type: :utc_datetime]
 
+config :discourse_app,
+  ecto_repos: [DiscourseApp.Repo]
+
+config :discourse_app, DiscourseApp.Repo,
+  database: Path.expand("../discourse_app_dev.sqlite3", __DIR__),
+  pool_size: 5,
+  stacktrace: true,
+  show_sensitive_data_on_connection_error: true
+
 # Configure the endpoint
 config :discourse_app, DiscourseAppWeb.Endpoint,
   url: [host: "localhost"],

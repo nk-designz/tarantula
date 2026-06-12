@@ -21,7 +21,7 @@ defmodule DiscourseApp.MixProject do
   def application do
     [
       mod: {DiscourseApp.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :os_mon]
     ]
   end
 
@@ -41,6 +41,8 @@ defmodule DiscourseApp.MixProject do
   defp deps do
     [
       {:earmark, "~> 1.4"},
+      {:ecto_sql, "~> 3.13"},
+      {:ecto_sqlite3, "~> 0.22"},
       {:phoenix, "~> 1.8.5"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
@@ -75,7 +77,8 @@ defmodule DiscourseApp.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "assets.setup", "assets.build"],
+      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind discourse_app", "esbuild discourse_app"],
       "assets.deploy": [
@@ -83,6 +86,8 @@ defmodule DiscourseApp.MixProject do
         "esbuild discourse_app --minify",
         "phx.digest"
       ],
+      "ecto.setup": ["ecto.create", "ecto.migrate"],
+      "ecto.reset": ["ecto.drop", "ecto.setup"],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]
   end

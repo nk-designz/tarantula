@@ -31,7 +31,7 @@ let Hooks = {}
 Hooks.DiscourseNetwork = {
   mounted() {
     this.handleEvent("render_network", (data) => {
-      this.drawGraph(data.nodes, data.links)
+      this.drawGraph(data.nodes || [], data.links || [])
     })
   },
 
@@ -47,39 +47,55 @@ Hooks.DiscourseNetwork = {
       .attr("height", "100%")
       .attr("viewBox", [0, 0, width, height])
 
+    if (nodes.length === 0) {
+      container.append("div")
+        .attr("class", "flex h-full items-center justify-center text-sm text-slate-400")
+        .text("No converged network yet")
+
+      return
+    }
+
     const simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id(d => d.id).distance(150))
-      .force("charge", d3.forceManyBody().strength(-400))
+      .force("link", d3.forceLink(links).id(d => d.id).distance(d => 120 + ((d.weight || 1) * 4)))
+      .force("charge", d3.forceManyBody().strength(-520))
       .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("collision", d3.forceCollide().radius(d => this.nodeRadius(d) + 8))
 
     const link = svg.append("g")
       .attr("stroke-opacity", 0.6)
       .selectAll("line")
       .data(links)
       .join("line")
-      .attr("stroke-width", 3)
+      .attr("stroke-width", d => 1.5 + (d.weight || 1))
       .attr("stroke", d => {
-        if (d.stance === "pro") return "#10b981" // Tailwind Emerald-500
-        if (d.stance === "contra") return "#ef4444" // Tailwind Red-500
-        return "#9ca3af" // Tailwind Gray-400
+        if (d.stance === "pro") return "#0f766e"
+        if (d.stance === "contra") return "#b91c1c"
+        return "#64748b"
       })
 
     const node = svg.append("g")
       .selectAll("circle")
       .data(nodes)
       .join("circle")
-      .attr("r", d => d.group === "actor" ? 12 : 18)
-      .attr("fill", d => d.group === "actor" ? "#3b82f6" : "#f59e0b") // Tailwind Blue/Amber
+      .attr("r", d => this.nodeRadius(d))
+      .attr("fill", d => d.group === "actor" ? "#0f766e" : "#ea580c")
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 2)
       .call(this.drag(simulation))
+
+    node.append("title")
+      .text(d => `${d.label || d.id} • ${d.weight || 1} references`)
 
     const label = svg.append("g")
       .selectAll("text")
       .data(nodes)
       .join("text")
-      .attr("dy", -25)
+      .attr("dy", d => -(this.nodeRadius(d) + 10))
       .attr("text-anchor", "middle")
-      .text(d => d.id)
-      .attr("class", "text-sm font-medium fill-slate-700")
+      .text(d => d.label || d.id)
+      .style("font-size", "12px")
+      .style("font-weight", "600")
+      .style("fill", "#1e293b")
 
     simulation.on("tick", () => {
       link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
@@ -87,6 +103,12 @@ Hooks.DiscourseNetwork = {
       node.attr("cx", d => d.x).attr("cy", d => d.y)
       label.attr("x", d => d.x).attr("y", d => d.y)
     })
+  },
+
+  nodeRadius(node) {
+    const weight = node.weight || 1
+    const base = node.group === "actor" ? 14 : 18
+    return Math.min(base + (weight * 1.4), 34)
   },
 
   drag(simulation) {

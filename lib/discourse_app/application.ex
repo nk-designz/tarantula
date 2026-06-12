@@ -8,9 +8,11 @@ defmodule DiscourseApp.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      DiscourseApp.Repo,
       DiscourseAppWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:discourse_app, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: DiscourseApp.PubSub},
+      {Task.Supervisor, name: DiscourseApp.AnalysisTaskSupervisor},
       # Start a worker by calling: DiscourseApp.Worker.start_link(arg)
       # {DiscourseApp.Worker, arg},
       # Start to serve requests, typically the last entry

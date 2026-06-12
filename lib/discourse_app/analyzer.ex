@@ -3,45 +3,54 @@ defmodule DiscourseApp.Analyzer do
 
   @system_prompt """
   You are a precise data extraction algorithm for Discourse Network Analysis (DNA).
-  Analyze the text provided by the user and extract all actors, their concepts/topics, and their stance.
+  Analyze the text provided by the user and extract all actors, their concepts/topics, their stance,
+  and the shortest possible source excerpt that proves the stance.
 
   CRITICAL RULES:
-  1. Extract EVERY distinct political or substantive argument mentioned in the text. Do not compress different topics into a single concept.
-  2. If a sentence states that MULTIPLE actors share the same position (e.g., "Both Actor A and Actor B support Concept X"), you MUST create separate JSON objects for each individual actor.
-  3. For ACTOR names: Use short, standardized group names or individual names (e.g., use "Johannes Varwick" instead of "Prof. Dr. Johannes Varwick"). If an actor or group is mentioned with slight variations, always use the EXACT same standardized name.
-  4. For CONCEPT names: Keep them concise but specific to the political topic (e.g., "Waffenlieferungen", "NATO-Mitgliedschaft", "Diplomatische Verhandlungen").
-  5. The output MUST be a valid JSON array of objects. Do not wrap it in an outer object, and do not include markdown formatting.
+  1. Extract every distinct substantive argument mentioned in the text.
+  2. If multiple actors share a position, return a separate JSON object for each actor.
+  3. Standardize repeated actor names consistently.
+  4. Keep concept names concise but specific.
+  5. Return evidence as a short direct quote or tight paraphrase from the text.
+  6. The output must be a valid JSON array of objects with no markdown.
 
   JSON SCHEMA:
   [
     {
       "actor": "Standardized Name",
-      "concept": "Specific Political Concept",
-      "stance": "pro" | "contra" | "neutral"
+      "concept": "Specific Concept",
+      "stance": "pro" | "contra" | "neutral",
+      "evidence": "Quoted or paraphrased source excerpt"
     }
   ]
   """
 
-  @doc """
-  Hauptfunktion: Parsed das Markdown, sendet den reinen Text an DeepSeek
-  und bereitet die Daten strukturiert für D3.js vor.
-  """
   def analyze_markdown(markdown) do
-    text = extract_text(markdown)
-
-    with {:ok, json_content} <- call_ollama(text),
-         {:ok, decoded} <- Jason.decode(json_content) do
-      IO.inspect(decoded, label: "Decoded JSON from DeepSeek")
-      statements = normalize_statements(decoded)
-      {:ok, format_for_d3(statements)}
-    else
-      error -> {:error, "Analyse mit DeepSeek fehlgeschlagen: #{inspect(error)}"}
+    markdown
+    |> markdown_to_text()
+    |> analyze_text()
+    |> case do
+      {:ok, statements} -> {:ok, format_for_d3(statements)}
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  # Extrahiert den reinen Text aus dem Markdown, um Tokens zu sparen
-  defp extract_text(markdown) do
-    {:ok, ast, _} = Earmark.as_ast(markdown)
+  def analyze_text(text) when is_binary(text) do
+    with {:ok, json_content} <- call_ollama(text),
+         {:ok, decoded} <- Jason.decode(json_content) do
+      {:ok,
+       decoded
+       |> normalize_statements()
+       |> Enum.map(&prepare_statement/1)
+       |> Enum.reject(&is_nil/1)}
+    else
+      {:error, reason} -> {:error, reason}
+      other -> {:error, inspect(other)}
+    end
+  end
+
+  def markdown_to_text(markdown) do
+    {:ok, ast, _messages} = Earmark.as_ast(markdown)
     extract_strings(ast)
   end
 
@@ -50,13 +59,11 @@ defmodule DiscourseApp.Analyzer do
 
   defp extract_strings({_tag, _attrs, children, _meta}), do: extract_strings(children)
   defp extract_strings(text) when is_binary(text), do: text
+  defp extract_strings(_value), do: ""
 
-  # HTTP-Request an dein lokales Ollama mit DeepSeek-Coder-V2
   defp call_ollama(text) do
     payload = %{
-      # Kleingeschrieben für Ollama
       model: "deepseek-coder-v2:latest",
-      # Zwingt DeepSeek in den JSON-Modus
       format: "json",
       stream: false,
       messages: [
@@ -65,14 +72,13 @@ defmodule DiscourseApp.Analyzer do
       ]
     }
 
-    # Hoher Timeout für das große MoE-Modell
     case Req.post(@ollama_url, json: payload, receive_timeout: 1_000_000) do
       {:ok, %{status: 200, body: %{"message" => %{"content" => content}}}} ->
         {:ok, content}
 
       {:ok, %{status: 404}} ->
         {:error,
-         "Modell 'deepseek-coder-v2:latest' nicht in Ollama gefunden. Bitte 'ollama pull deepseek-coder-v2' ausführen."}
+         "Modell 'deepseek-coder-v2:latest' nicht in Ollama gefunden. Bitte 'ollama pull deepseek-coder-v2' ausfuehren."}
 
       {:ok, response} ->
         {:error, "Unerwarteter API-Status von Ollama: #{response.status}"}
@@ -82,47 +88,102 @@ defmodule DiscourseApp.Analyzer do
     end
   end
 
-  # Fall 1: Das LLM liefert das nackte Array (wie gewünscht)
   defp normalize_statements(list) when is_list(list), do: list
-
-  # Fall 2: DeepSeek versteckt es in "actors" (Das ist dein aktueller Fall!)
   defp normalize_statements(%{"actors" => list}) when is_list(list), do: list
-
-  # Fall 3: Ein anderes Modell versteckt es in "statements"
   defp normalize_statements(%{"statements" => list}) when is_list(list), do: list
-
-  # Fall 4: Das Modell liefert nur eine einzige Aussage als direkte Map
   defp normalize_statements(map) when is_map(map), do: [map]
+  defp normalize_statements(_other), do: []
 
-  # Fall 5: Sicherheitsnetz für unvorhergesehene Strukturen
-  defp normalize_statements(_), do: []
+  defp prepare_statement(statement) when is_map(statement) do
+    actor = statement |> get_value("actor") |> normalize_label()
+    concept = statement |> get_value("concept") |> normalize_label()
+    stance = statement |> get_value("stance") |> normalize_stance()
+    evidence = statement |> get_value("evidence") |> clean_excerpt()
 
-  # Formatiert die Statements in das von D3.js erwartete Nodes/Links-Schema
+    if actor == "" or concept == "" or is_nil(stance) do
+      nil
+    else
+      %{
+        "actor" => actor,
+        "concept" => concept,
+        "stance" => stance,
+        "evidence" => evidence
+      }
+    end
+  end
+
+  defp prepare_statement(_other), do: nil
+
+  defp get_value(map, key) when is_map(map) do
+    Map.get(map, key) || Map.get(map, String.to_atom(key))
+  end
+
+  defp normalize_label(nil), do: ""
+
+  defp normalize_label(value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> String.replace(~r/\s+/, " ")
+  end
+
+  defp normalize_stance(nil), do: nil
+
+  defp normalize_stance(value) do
+    case value |> to_string() |> String.trim() |> String.downcase() do
+      "pro" -> "pro"
+      "support" -> "pro"
+      "supports" -> "pro"
+      "contra" -> "contra"
+      "con" -> "contra"
+      "oppose" -> "contra"
+      "opposes" -> "contra"
+      "neutral" -> "neutral"
+      "mixed" -> "neutral"
+      _ -> nil
+    end
+  end
+
+  defp clean_excerpt(nil), do: nil
+
+  defp clean_excerpt(value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> String.replace(~r/\s+/, " ")
+    |> case do
+      "" -> nil
+      excerpt -> String.slice(excerpt, 0, 280)
+    end
+  end
+
   defp format_for_d3(statements) do
-    valid_statements =
-      Enum.filter(statements, fn s ->
-        is_map(s) and s["actor"] != nil and s["concept"] != nil and s["stance"] != nil
+    actor_nodes =
+      statements
+      |> Enum.map(& &1["actor"])
+      |> Enum.uniq()
+      |> Enum.map(fn actor ->
+        %{id: "actor:#{actor}", label: actor, group: "actor", weight: 1}
       end)
 
-    actors =
-      valid_statements
-      |> Enum.map(&%{id: &1["actor"], group: "actor"})
+    concept_nodes =
+      statements
+      |> Enum.map(& &1["concept"])
       |> Enum.uniq()
-
-    concepts =
-      valid_statements
-      |> Enum.map(&%{id: &1["concept"], group: "concept"})
-      |> Enum.uniq()
+      |> Enum.map(fn concept ->
+        %{id: "concept:#{concept}", label: concept, group: "concept", weight: 1}
+      end)
 
     links =
-      Enum.map(valid_statements, fn stmt ->
+      Enum.map(statements, fn statement ->
         %{
-          source: stmt["actor"],
-          target: stmt["concept"],
-          stance: String.downcase(to_string(stmt["stance"]))
+          source: "actor:#{statement["actor"]}",
+          target: "concept:#{statement["concept"]}",
+          stance: statement["stance"],
+          weight: 1
         }
       end)
 
-    %{nodes: actors ++ concepts, links: links}
+    %{nodes: actor_nodes ++ concept_nodes, links: links}
   end
 end

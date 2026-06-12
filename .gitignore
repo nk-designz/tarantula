@@ -31,6 +31,15 @@ discourse_app-*.tar
 # Ignore digested assets cache.
 /priv/static/cache_manifest.json
 
+# Ignore generated uploads stored by the platform.
+/priv/static/uploads/
+
+# Ignore local SQLite databases and journals.
+/discourse_app_dev.sqlite3
+/discourse_app_dev.sqlite3-*
+/discourse_app_test.sqlite3
+/discourse_app_test.sqlite3-*
+
 # In case you use Node.js/npm, you want to ignore these.
 npm-debug.log
 /assets/node_modules/

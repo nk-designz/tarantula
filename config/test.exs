@@ -23,6 +23,11 @@ config :phoenix, :plug_init_mode, :runtime
 config :phoenix_live_view,
   enable_expensive_runtime_checks: true
 
+config :discourse_app, DiscourseApp.Repo,
+  database: Path.expand("../discourse_app_test.sqlite3", __DIR__),
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 5
+
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
