@@ -77,6 +77,20 @@ defmodule DiscourseAppWeb.DocumentsLive do
   end
 
   @impl true
+  def handle_event("retry_document", %{"id" => id}, socket) do
+    case Projects.enqueue_document_analysis(String.to_integer(id)) do
+      {:ok, _} ->
+        {:noreply, put_flash(socket, :info, "Document re-queued for analysis")}
+
+      {:error, :project_busy} ->
+        {:noreply, put_flash(socket, :error, "Analysis already running for this project")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, inspect(reason))}
+    end
+  end
+
+  @impl true
   def handle_info({:project_updated, _project_id}, socket) do
     {:noreply, refresh_project(socket)}
   end
@@ -263,6 +277,17 @@ defmodule DiscourseAppWeb.DocumentsLive do
                   >
                     View source
                   </a>
+                  <%= if document.status == "failed" do %>
+                    <button
+                      type="button"
+                      id={"retry-document-#{document.id}"}
+                      phx-click="retry_document"
+                      phx-value-id={document.id}
+                      class="dna-button dna-button-secondary"
+                    >
+                      <.icon name="hero-arrow-path" class="size-4" /> Retry
+                    </button>
+                  <% end %>
                   <button
                     type="button"
                     phx-click="delete_document"

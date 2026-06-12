@@ -35,6 +35,8 @@ defmodule DiscourseApp.LlmSettings do
     field(:claude_model, :string, default: "claude-opus-4-5")
     field(:openai_api_key, :string, default: "")
     field(:openai_model, :string, default: "gpt-4o")
+    field(:analysis_max_retries, :integer, default: 3)
+    field(:analysis_retry_delay_s, :integer, default: 2)
 
     timestamps()
   end
@@ -48,9 +50,19 @@ defmodule DiscourseApp.LlmSettings do
       :claude_api_key,
       :claude_model,
       :openai_api_key,
-      :openai_model
+      :openai_model,
+      :analysis_max_retries,
+      :analysis_retry_delay_s
     ])
     |> validate_required([:provider])
     |> validate_inclusion(:provider, @providers)
+    |> validate_number(:analysis_max_retries,
+      greater_than_or_equal_to: 1,
+      less_than_or_equal_to: 10
+    )
+    |> validate_number(:analysis_retry_delay_s,
+      greater_than_or_equal_to: 0,
+      less_than_or_equal_to: 60
+    )
   end
 end

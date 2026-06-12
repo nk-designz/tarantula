@@ -271,6 +271,44 @@ defmodule DiscourseAppWeb.SettingsLive do
             </div>
           </div>
 
+          <%!-- Analysis retry settings --%>
+          <div class="settings-card mt-4">
+            <h2 class="settings-section-title">Analysis retries</h2>
+            <p class="settings-section-desc">
+              How many times to retry a failed document analysis, and how long to wait between attempts.
+            </p>
+
+            <div class="mt-4 grid grid-cols-2 gap-4">
+              <div class="dna-field">
+                <label class="dna-label" for="llm_settings_analysis_max_retries">Max retries</label>
+                <input
+                  id="llm_settings_analysis_max_retries"
+                  type="number"
+                  name="llm_settings[analysis_max_retries]"
+                  value={@form[:analysis_max_retries].value}
+                  min="1"
+                  max="10"
+                  class="dna-input"
+                />
+                <p class="mt-1 text-xs" style="color: var(--text-muted);">1 – 10 attempts</p>
+              </div>
+
+              <div class="dna-field">
+                <label class="dna-label" for="llm_settings_analysis_retry_delay_s">Retry delay (seconds)</label>
+                <input
+                  id="llm_settings_analysis_retry_delay_s"
+                  type="number"
+                  name="llm_settings[analysis_retry_delay_s]"
+                  value={@form[:analysis_retry_delay_s].value}
+                  min="0"
+                  max="60"
+                  class="dna-input"
+                />
+                <p class="mt-1 text-xs" style="color: var(--text-muted);">Base delay; doubles each attempt</p>
+              </div>
+            </div>
+          </div>
+
           <div class="mt-6">
             <button type="submit" class="dna-button dna-button-primary">
               <.icon name="hero-check" class="size-4" /> Save settings
@@ -290,7 +328,9 @@ defmodule DiscourseAppWeb.SettingsLive do
       "claude_api_key" => s.claude_api_key,
       "claude_model" => s.claude_model,
       "openai_api_key" => s.openai_api_key,
-      "openai_model" => s.openai_model
+      "openai_model" => s.openai_model,
+      "analysis_max_retries" => s.analysis_max_retries,
+      "analysis_retry_delay_s" => s.analysis_retry_delay_s
     }
   end
 
@@ -307,21 +347,6 @@ defmodule DiscourseAppWeb.SettingsLive do
       "#{base} border-[color:var(--line)] bg-[color:var(--surface-strong)] text-[color:var(--text-muted)] hover:border-[color:var(--line-strong)] hover:text-[color:var(--text-main)]"
     end
   end
-
-  defp settings_fields(s) do
-    %{
-      "provider" => s.provider,
-      "ollama_url" => s.ollama_url,
-      "ollama_model" => s.ollama_model,
-      "claude_api_key" => s.claude_api_key,
-      "claude_model" => s.claude_model,
-      "openai_api_key" => s.openai_api_key,
-      "openai_model" => s.openai_model
-    }
-  end
-
-  defp settings_to_form(settings),
-    do: to_form(settings_fields(settings), as: :llm_settings)
 
   defp status_text_class(:ok), do: "mt-1.5 text-xs text-green-600"
   defp status_text_class(:warn), do: "mt-1.5 text-xs text-amber-600"

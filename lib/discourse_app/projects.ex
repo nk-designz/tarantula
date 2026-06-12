@@ -1,7 +1,7 @@
 defmodule DiscourseApp.Projects do
   import Ecto.Query
 
-  alias DiscourseApp.{Analyzer, Repo, TextExtractor}
+  alias DiscourseApp.{Analyzer, Repo, Settings, TextExtractor}
   alias DiscourseApp.Projects.{Actor, Concept, Document, Project, Stance}
 
   @projects_topic "projects"
@@ -152,6 +152,24 @@ defmodule DiscourseApp.Projects do
     end
   end
 
+  def enqueue_document_analysis(document_id) do
+    document = Repo.get!(Document, document_id)
+    project = get_project!(document.project_id)
+
+    if project.status in ["queued", "processing"] do
+      {:error, :project_busy}
+    else
+      update_document!(document_id, %{status: "extracting", last_error: nil})
+      broadcast_project(project.id)
+
+      Task.Supervisor.start_child(DiscourseApp.AnalysisTaskSupervisor, fn ->
+        run_single_document_analysis(project.id, document_id)
+      end)
+
+      {:ok, document}
+    end
+  end
+
   def project_topic(project_id), do: "projects:#{project_id}"
 
   def supported_extensions, do: ~w(.md .txt .pdf)
@@ -184,6 +202,9 @@ defmodule DiscourseApp.Projects do
   end
 
   defp run_project_analysis(project_id) do
+    settings = Settings.get_llm_settings()
+    max_retries = settings.analysis_max_retries || 3
+    retry_delay_ms = (settings.analysis_retry_delay_s || 2) * 1_000
     started_ms = System.monotonic_time(:millisecond)
     project = get_project!(project_id)
     documents = project.documents
@@ -196,7 +217,7 @@ defmodule DiscourseApp.Projects do
       documents
       |> Enum.with_index(1)
       |> Enum.reduce([], fn {document, index}, acc ->
-        case analyze_document(project_id, document, index, total_steps, started_ms) do
+        case analyze_document_with_retry(project_id, document, index, total_steps, started_ms, max_retries, retry_delay_ms) do
           :ok -> acc
           {:error, message} -> [message | acc]
         end
@@ -232,6 +253,42 @@ defmodule DiscourseApp.Projects do
 
     broadcast_project(project_id)
     broadcast_projects()
+  end
+
+  defp run_single_document_analysis(project_id, document_id) do
+    settings = Settings.get_llm_settings()
+    max_retries = settings.analysis_max_retries || 3
+    retry_delay_ms = (settings.analysis_retry_delay_s || 2) * 1_000
+    started_ms = System.monotonic_time(:millisecond)
+    document = Repo.get!(Document, document_id)
+
+    analyze_document_with_retry(project_id, document, 1, 1, started_ms, max_retries, retry_delay_ms)
+    normalize_and_converge_project_network(project_id)
+    broadcast_project(project_id)
+    broadcast_projects()
+  end
+
+  defp analyze_document_with_retry(
+         project_id,
+         document,
+         index,
+         total_steps,
+         started_ms,
+         max_retries,
+         retry_delay_ms,
+         attempt \\ 1
+       ) do
+    case analyze_document(project_id, document, index, total_steps, started_ms) do
+      :ok ->
+        :ok
+
+      {:error, _reason} when attempt < max_retries ->
+        Process.sleep(retry_delay_ms * attempt)
+        analyze_document_with_retry(project_id, document, index, total_steps, started_ms, max_retries, retry_delay_ms, attempt + 1)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp analyze_document(project_id, document, index, total_steps, started_ms) do
