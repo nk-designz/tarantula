@@ -24,7 +24,6 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/discourse_app"
 import topbar from "../vendor/topbar"
-import * as d3 from "d3"
 
 let Hooks = {}
 
@@ -77,75 +76,92 @@ Hooks.DiscourseNetwork = {
   },
 
   drawGraph(nodes, links) {
-    const container = d3.select(this.el)
-    container.selectAll("*").remove()
+    this.el.innerHTML = ""
     const palette = this.palette()
 
     const width = this.el.clientWidth || 800
     const height = this.el.clientHeight || 600
 
-    const svg = container.append("svg")
-      .attr("width", "100%")
-      .attr("height", "100%")
-      .attr("viewBox", [0, 0, width, height])
-
     if (nodes.length === 0) {
-      container.append("div")
-        .attr("class", "flex h-full items-center justify-center px-6 text-center text-sm font-medium")
-        .style("color", palette.empty)
-        .text("No converged network yet")
+      const empty = document.createElement("div")
+      empty.className = "flex h-full items-center justify-center px-6 text-center text-sm font-medium"
+      empty.style.color = palette.empty
+      empty.textContent = "No converged network yet"
+      this.el.appendChild(empty)
 
       return
     }
 
-    const simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id(d => d.id).distance(d => 120 + ((d.weight || 1) * 4)))
-      .force("charge", d3.forceManyBody().strength(-520))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide().radius(d => this.nodeRadius(d) + 8))
+    const byId = new Map(nodes.map((node, index) => [node.id, {...node, ...this.nodePosition(index, nodes.length, width, height)}]))
 
-    const link = svg.append("g")
-      .attr("stroke-opacity", 0.6)
-      .selectAll("line")
-      .data(links)
-      .join("line")
-      .attr("stroke-width", d => 1.5 + (d.weight || 1))
-      .attr("stroke", d => {
-        if (d.stance === "pro") return palette.pro
-        if (d.stance === "contra") return palette.contra
-        return palette.neutral
-      })
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    svg.setAttribute("width", "100%")
+    svg.setAttribute("height", "100%")
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`)
 
-    const node = svg.append("g")
-      .selectAll("circle")
-      .data(nodes)
-      .join("circle")
-      .attr("r", d => this.nodeRadius(d))
-      .attr("fill", d => d.group === "actor" ? palette.actor : palette.concept)
-      .attr("stroke", palette.stroke)
-      .attr("stroke-width", 2)
-      .call(this.drag(simulation))
+    const linkLayer = document.createElementNS("http://www.w3.org/2000/svg", "g")
+    linkLayer.setAttribute("stroke-opacity", "0.62")
 
-    node.append("title")
-      .text(d => `${d.label || d.id} • ${d.weight || 1} references`)
+    links.forEach((link) => {
+      const source = byId.get(link.source)
+      const target = byId.get(link.target)
+      if (!source || !target) return
 
-    const label = svg.append("g")
-      .selectAll("text")
-      .data(nodes)
-      .join("text")
-      .attr("dy", d => -(this.nodeRadius(d) + 10))
-      .attr("text-anchor", "middle")
-      .text(d => d.label || d.id)
-      .style("font-size", "12px")
-      .style("font-weight", "600")
-      .style("fill", palette.label)
-
-    simulation.on("tick", () => {
-      link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
-          .attr("x2", d => d.target.x).attr("y2", d => d.target.y)
-      node.attr("cx", d => d.x).attr("cy", d => d.y)
-      label.attr("x", d => d.x).attr("y", d => d.y)
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line")
+      line.setAttribute("x1", source.x)
+      line.setAttribute("y1", source.y)
+      line.setAttribute("x2", target.x)
+      line.setAttribute("y2", target.y)
+      line.setAttribute("stroke-width", `${1.5 + (link.weight || 1)}`)
+      line.setAttribute("stroke", link.stance === "pro" ? palette.pro : link.stance === "contra" ? palette.contra : palette.neutral)
+      linkLayer.appendChild(line)
     })
+
+    const nodeLayer = document.createElementNS("http://www.w3.org/2000/svg", "g")
+    const labelLayer = document.createElementNS("http://www.w3.org/2000/svg", "g")
+
+    byId.forEach((node) => {
+      const radius = this.nodeRadius(node)
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle")
+      circle.setAttribute("cx", node.x)
+      circle.setAttribute("cy", node.y)
+      circle.setAttribute("r", radius)
+      circle.setAttribute("fill", node.group === "actor" ? palette.actor : palette.concept)
+      circle.setAttribute("stroke", palette.stroke)
+      circle.setAttribute("stroke-width", "2")
+
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title")
+      title.textContent = `${node.label || node.id} • ${node.weight || 1} references`
+      circle.appendChild(title)
+      nodeLayer.appendChild(circle)
+
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text")
+      label.setAttribute("x", node.x)
+      label.setAttribute("y", node.y - (radius + 10))
+      label.setAttribute("text-anchor", "middle")
+      label.setAttribute("font-size", "12")
+      label.setAttribute("font-weight", "600")
+      label.setAttribute("fill", palette.label)
+      label.textContent = node.label || node.id
+      labelLayer.appendChild(label)
+    })
+
+    svg.appendChild(linkLayer)
+    svg.appendChild(nodeLayer)
+    svg.appendChild(labelLayer)
+    this.el.appendChild(svg)
+  },
+
+  nodePosition(index, total, width, height) {
+    const columns = Math.max(3, Math.ceil(Math.sqrt(total)))
+    const rows = Math.max(2, Math.ceil(total / columns))
+    const col = index % columns
+    const row = Math.floor(index / columns)
+
+    return {
+      x: ((col + 1) * width) / (columns + 1),
+      y: ((row + 1) * height) / (rows + 1),
+    }
   },
 
   nodeRadius(node) {
@@ -154,23 +170,7 @@ Hooks.DiscourseNetwork = {
     return Math.min(base + (weight * 1.4), 34)
   },
 
-  drag(simulation) {
-    function dragstarted(event) {
-      if (!event.active) simulation.alphaTarget(0.3).restart()
-      event.subject.fx = event.subject.x
-      event.subject.fy = event.subject.y
-    }
-    function dragged(event) {
-      event.subject.fx = event.x
-      event.subject.fy = event.y
-    }
-    function dragended(event) {
-      if (!event.active) simulation.alphaTarget(0)
-      event.subject.fx = null
-      event.subject.fy = null
-    }
-    return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended)
-  }
+  drag() { return null }
 }
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")

@@ -20,10 +20,15 @@ defmodule DiscourseAppWeb.ProjectsLive do
   def handle_params(%{"id" => id}, _uri, socket) do
     selected = Projects.get_project!(id)
 
+    form_params = %{
+      "name" => selected.name || "",
+      "description" => selected.description || ""
+    }
+
     {:noreply,
      socket
      |> assign(:selected_project, selected)
-     |> assign(:project_form, to_form(selected, as: :project))
+     |> assign(:project_form, to_form(form_params, as: :project))
      |> assign(:projects, Projects.list_projects())}
   end
 
